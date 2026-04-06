@@ -35,7 +35,32 @@ const saveHistory = () => {
   fs.writeFileSync(historyPath, JSON.stringify(sentHistory, null, 2));
 };
 
+// --- TEMPLATE CACHING ---
+let cachedTemplates = null;
+let cachedTemplatesTime = 0;
+
+// --- MEDIA CACHING ---
+const mediaCachePath = path.join(__dirname, 'media_cache.json');
+let mediaCache = {};
+if (fs.existsSync(mediaCachePath)) {
+  try {
+    mediaCache = JSON.parse(fs.readFileSync(mediaCachePath, 'utf8'));
+  } catch(e) {
+    console.error("Could not parse media cache file", e);
+  }
+}
+
+const saveMediaCache = () => {
+  fs.writeFileSync(mediaCachePath, JSON.stringify(mediaCache, null, 2));
+};
+
 const getMetaTemplates = async () => {
+  // If templates are cached and less than 1 hour old, use them to prevent rate limiting
+  if (cachedTemplates && (Date.now() - cachedTemplatesTime < 3600000)) {
+    console.log('[CACHE] Using locally cached Meta templates');
+    return cachedTemplates;
+  }
+
   const WABA_ID = process.env.WABA_ID;
   const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
 
@@ -46,7 +71,7 @@ const getMetaTemplates = async () => {
       headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}` }
     });
 
-    return response.data.data.filter(t => t.status === 'APPROVED').map(t => {
+    const parsedTemplates = response.data.data.filter(t => t.status === 'APPROVED').map(t => {
       const variables = [];
       const portalNames = [];
       let headerType = null;
@@ -83,6 +108,11 @@ const getMetaTemplates = async () => {
         headerImageUrl
       };
     });
+    
+    cachedTemplates = parsedTemplates;
+    cachedTemplatesTime = Date.now();
+    return parsedTemplates;
+
   } catch (err) {
     console.error("Meta Fetch Error:", err.response?.data || err.message);
     return [];
@@ -155,32 +185,41 @@ app.post('/api/send', async (req, res) => {
     // If the template has an image header, download it and upload to Meta to get a media_id
     let cachedMediaId = null;
     if (template && template.headerType === 'IMAGE' && template.headerImageUrl) {
-      try {
-        console.log('[MEDIA] Downloading header image from Meta CDN...');
-        const imgResponse = await axios.get(template.headerImageUrl, { responseType: 'arraybuffer' });
-        const imgBuffer = Buffer.from(imgResponse.data);
-        const tmpPath = path.join(__dirname, 'uploads', `header_${Date.now()}.png`);
-        fs.writeFileSync(tmpPath, imgBuffer);
-        console.log(`[MEDIA] Image downloaded (${imgBuffer.length} bytes), uploading to Meta...`);
+      if (mediaCache[template.name]) {
+        console.log(`[MEDIA CACHE] Using cached media_id for template: ${template.name}`);
+        cachedMediaId = mediaCache[template.name];
+      } else {
+        try {
+          console.log('[MEDIA] Downloading header image from Meta CDN...');
+          const imgResponse = await axios.get(template.headerImageUrl, { responseType: 'arraybuffer' });
+          const imgBuffer = Buffer.from(imgResponse.data);
+          const tmpPath = path.join(__dirname, 'uploads', `header_${Date.now()}.png`);
+          fs.writeFileSync(tmpPath, imgBuffer);
+          console.log(`[MEDIA] Image downloaded (${imgBuffer.length} bytes), uploading to Meta...`);
 
-        const FormData = require('form-data');
-        const formData = new FormData();
-        formData.append('messaging_product', 'whatsapp');
-        formData.append('file', fs.createReadStream(tmpPath), { filename: 'header.png', contentType: 'image/png' });
+          const FormData = require('form-data');
+          const formData = new FormData();
+          formData.append('messaging_product', 'whatsapp');
+          formData.append('file', fs.createReadStream(tmpPath), { filename: 'header.png', contentType: 'image/png' });
 
-        const uploadRes = await axios.post(
-          `https://graph.facebook.com/v23.0/${PHONE_NUMBER_ID}/media`,
-          formData,
-          { headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}`, ...formData.getHeaders() } }
-        );
-        cachedMediaId = uploadRes.data.id;
-        console.log(`[MEDIA] Upload success! media_id = ${cachedMediaId}`);
-        
-        // Clean up temp file
-        fs.unlinkSync(tmpPath);
-      } catch (uploadErr) {
-        console.error('[MEDIA] Image upload failed:', uploadErr.response?.data || uploadErr.message);
-        console.log('[MEDIA] Will attempt to send without image header.');
+          const uploadRes = await axios.post(
+            `https://graph.facebook.com/v23.0/${PHONE_NUMBER_ID}/media`,
+            formData,
+            { headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}`, ...formData.getHeaders() } }
+          );
+          cachedMediaId = uploadRes.data.id;
+          console.log(`[MEDIA] Upload success! media_id = ${cachedMediaId}`);
+          
+          // Save to persistent cache so we don't upload it again 
+          mediaCache[template.name] = cachedMediaId;
+          saveMediaCache();
+
+          // Clean up temp file
+          fs.unlinkSync(tmpPath);
+        } catch (uploadErr) {
+          console.error('[MEDIA] Image upload failed:', uploadErr.response?.data || uploadErr.message);
+          console.log('[MEDIA] Will attempt to send without image header.');
+        }
       }
     }
 
@@ -191,7 +230,33 @@ app.post('/api/send', async (req, res) => {
       }
 
       const phone = contact[mapping.phone];
-      const cleanPhone = phone ? phone.replace(/\D/g, '') : '';
+      if (!phone || phone.trim() === '') {
+        jobs[jobId].results.push({
+          name: mapping.name ? contact[mapping.name] : 'Unknown',
+          phone: 'Missing',
+          status: 'Failed ❌ (No Phone Number)'
+        });
+        jobs[jobId].processed += 1;
+        continue;
+      }
+      let cleanPhone = phone.replace(/\D/g, '');
+      
+      // Auto-append India country code if only 10 digits provided
+      if (cleanPhone.length === 10) {
+        cleanPhone = '91' + cleanPhone;
+      }
+      
+      // Basic formatting check: must be at least 10 digits (minimum length including country code)
+      if (cleanPhone.length < 10) {
+        jobs[jobId].results.push({
+          name: mapping.name ? contact[mapping.name] : 'Unknown',
+          phone: phone || 'N/A',
+          status: 'Failed ❌ (Invalid Format)'
+        });
+        jobs[jobId].processed += 1;
+        continue;
+      }
+      
       let msgStatus = 'Failed ❌';
       
       // Duplicate Protection Logic
@@ -312,8 +377,13 @@ app.post('/api/send', async (req, res) => {
       } catch (err) {
         // Detailed Meta Graph API error parsing
         const metaError = err.response?.data?.error?.message || err.message;
-        const subCode = err.response?.data?.error?.error_subcode;
-        msgStatus = `Failed ❌ (${subCode ? '#' + subCode + ' ' : ''}${metaError})`;
+        const subCode = err.response?.data?.error?.error_subcode || err.response?.data?.error?.code;
+        
+        if (subCode === 131030) {
+          msgStatus = 'Failed ❌ (Not on WhatsApp)';
+        } else {
+          msgStatus = `Failed ❌ (${subCode ? '#' + subCode + ' ' : ''}${metaError})`;
+        }
         console.error(`Failed to send to ${phone}: ${metaError}`);
       }
 
