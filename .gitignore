@@ -1,0 +1,6 @@
+node_modules/
+.env
+uploads/
+sent_history.json
+frontend/node_modules/
+frontend/dist/
