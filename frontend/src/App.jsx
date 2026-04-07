@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 
 function App() {
   const [file, setFile] = useState(null);
-  const [fileKey, setFileKey] = useState(Date.now()); // Forces file input reset
+  const [fileKey, setFileKey] = useState(0); // Forces file input reset
   const [templates, setTemplates] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState('');
   const [messageType, setMessageType] = useState('template');
@@ -13,6 +13,9 @@ function App() {
   const [status, setStatus] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [allowDuplicates, setAllowDuplicates] = useState(false);
+  
+  const [activeTab, setActiveTab] = useState('compose');
+  const [historyData, setHistoryData] = useState([]);
   
   const [jobId, setJobId] = useState(null);
   const [jobStatus, setJobStatus] = useState(null);
@@ -27,6 +30,21 @@ function App() {
       .catch(err => console.error("Could not fetch templates", err));
   }, []);
 
+  // Fetch active job on mount
+  useEffect(() => {
+    fetch('/api/active-job')
+      .then(res => res.json())
+      .then(data => {
+        if (data.jobId) {
+          setJobId(data.jobId);
+          setJobStatus(data.status);
+          setStatus('Campaign recovered from background!');
+          setActiveTab('active');
+        }
+      })
+      .catch(err => console.error("Could not fetch active job", err));
+  }, []);
+
   // Poll status endpoint while jobId exists
   useEffect(() => {
     if (!jobId) return;
@@ -34,11 +52,19 @@ function App() {
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`/api/status/${jobId}`);
+        if (!res.ok) throw new Error('Network error');
         const data = await res.json();
-        setJobStatus(data);
-        if (data.status === 'Completed') {
+        
+        if (data.error) {
           clearInterval(interval);
-          setStatus('Campaign Completed!');
+          setStatus('Job expired or not found.');
+          setJobId(null);
+          return;
+        }
+        setJobStatus(data);
+        if (data.status === 'Completed' || data.status === 'Stopped') {
+          clearInterval(interval);
+          setStatus(`Campaign ${data.status}!`);
         }
       } catch (err) {
         console.error("Polling error", err);
@@ -109,6 +135,7 @@ function App() {
       if (data.jobId) {
         setJobId(data.jobId);
         setStatus('Campaign started: processing backend queue.');
+        setActiveTab('active');
       } else {
         setStatus(`Failed to get Job ID: ${data.error || 'Unknown Error'}`);
       }
@@ -139,11 +166,12 @@ function App() {
     setJobStatus(null);
     setCsvData([]);
     setFile(null);
-    setFileKey(Date.now());
+    setFileKey(prev => prev + 1);
     setStatus('');
     setMapping({});
     setMessageType('template');
     setCustomMessage('');
+    setActiveTab('compose');
   };
 
   const handlePause = async () => {
@@ -164,6 +192,39 @@ function App() {
     }
   };
 
+  const handleStop = async () => {
+    if (!jobId) return;
+    try {
+      await fetch(`/api/stop/${jobId}`, { method: 'POST' });
+    } catch (err) {
+      console.error("Stop error", err);
+    }
+  };
+
+  const fetchHistory = async () => {
+    try {
+      const res = await fetch('/api/history');
+      const data = await res.json();
+      setHistoryData(data);
+    } catch(err) {
+      console.error(err);
+    }
+  };
+  
+  const handleExportHistoryCSV = (job) => {
+    if (!job || !job.results || !job.results.length) return;
+    const headers = "Name,Phone,Status\n";
+    const csvContent = headers + job.results.map(r => `"${r.name}","${r.phone}","${r.status.replace(/"/g, '""')}"`).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `campaign_history_${job.id}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const currentTemplate = templates.find(t => t.name === selectedTemplate);
 
   return (
@@ -174,7 +235,31 @@ function App() {
           <p className="text-emerald-100">Local Tool • No Auth • Meta API</p>
         </div>
 
+        {/* Navigation Tabs */}
+        <div className="flex border-b border-gray-200 bg-gray-50">
+          <button 
+            className={`flex-1 py-4 font-semibold text-sm transition-colors ${activeTab === 'compose' ? 'border-b-2 border-emerald-500 text-emerald-600 bg-white' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}
+            onClick={() => setActiveTab('compose')}
+          >
+            🚀 Compose Campaign
+          </button>
+          <button 
+            className={`flex-1 py-4 font-semibold text-sm transition-colors ${activeTab === 'active' ? 'border-b-2 border-emerald-500 text-emerald-600 bg-white' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}
+            onClick={() => setActiveTab('active')}
+          >
+            🏃 Active Campaign
+          </button>
+          <button 
+            className={`flex-1 py-4 font-semibold text-sm transition-colors ${activeTab === 'history' ? 'border-b-2 border-emerald-500 text-emerald-600 bg-white' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}
+            onClick={() => { setActiveTab('history'); fetchHistory(); }}
+          >
+            🕒 Campaign History
+          </button>
+        </div>
+
         <div className="p-8 space-y-8">
+          {activeTab === 'compose' && (
+            <div className="space-y-8">
           
           {/* Step 1: Upload */}
           <div className={`bg-gray-50 rounded-xl p-6 border ${csvData.length === 0 ? 'border-l-4 border-l-emerald-500' : 'border-gray-200'}`}>
@@ -347,13 +432,23 @@ function App() {
               </div>
             </div>
           )}
+          </div>
+          )}
 
           {/* Result Output UI - CRM Style Dashboard */}
-          {jobId && jobStatus && (() => {
-            const total = jobStatus.total || 0;
-            const sent = jobStatus.results.filter(r => r.status.includes('✅')).length;
-            const failed = jobStatus.results.filter(r => r.status.includes('❌')).length;
-            const skipped = jobStatus.results.filter(r => r.status.includes('⏭️')).length;
+          {activeTab === 'active' && (
+            <div className="animate-fade-in-up">
+              {!jobId || !jobStatus ? (
+                 <div className="text-center p-12 bg-gray-50 rounded-xl border border-gray-200">
+                    <span className="text-4xl block mb-4">⏸️</span>
+                    <p className="text-gray-500 font-medium">No campaign is currently running.</p>
+                 </div>
+              ) : (
+                (() => {
+                  const total = jobStatus.total || 0;
+                  const sent = jobStatus.results.filter(r => r.status.includes('✅')).length;
+                  const failed = jobStatus.results.filter(r => r.status.includes('❌')).length;
+                  const skipped = jobStatus.results.filter(r => r.status.includes('⏭️')).length;
 
             const filteredResults = jobStatus.results.filter(r => 
               r.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -365,8 +460,8 @@ function App() {
                 <div className="flex justify-between items-center mb-6 border-b border-gray-200 pb-4">
                   <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-4">
                     <span>Campaign Output CRM</span>
-                    {jobStatus.status === 'Completed' ? (
-                      <span className="text-sm bg-emerald-100 text-emerald-800 px-2 py-1 rounded-full font-semibold text-xs border border-emerald-200">DONE</span>
+                    {jobStatus.status === 'Completed' || jobStatus.status === 'Stopped' ? (
+                      <span className="text-sm bg-emerald-100 text-emerald-800 px-2 py-1 rounded-full font-semibold text-xs border border-emerald-200">{jobStatus.status.toUpperCase()}</span>
                     ) : (
                       <div className="flex gap-2">
                         {jobStatus.status === 'Running' && (
@@ -385,6 +480,12 @@ function App() {
                             <span className="text-sm">▶️</span> Resume Campaign
                           </button>
                         )}
+                        <button 
+                          onClick={handleStop}
+                          className="text-xs bg-red-50 text-red-700 px-3 py-1.5 rounded-lg font-bold border border-red-200 hover:bg-red-100 transition-all flex items-center gap-1.5 shadow-sm"
+                        >
+                          <span className="text-sm">🛑</span> Stop
+                        </button>
                       </div>
                     )}
                   </h2>
@@ -477,7 +578,7 @@ function App() {
                   </table>
                 </div>
 
-              {jobStatus.status === 'Completed' && (
+              {(jobStatus.status === 'Completed' || jobStatus.status === 'Stopped') && (
                 <div className="flex gap-4 justify-center animate-bounce-short">
                   <button 
                     onClick={handleExportCSV} 
@@ -495,7 +596,66 @@ function App() {
               )}
             </div>
           );
-          })()}
+        })()
+      )}
+      </div>
+    )}
+
+    {activeTab === 'history' && (
+            <div className="animate-fade-in-up">
+              <h2 className="text-2xl font-bold text-gray-800 mb-6">Past Campaigns</h2>
+              {historyData.length === 0 ? (
+                <div className="text-center p-12 bg-gray-50 rounded-xl border border-gray-200">
+                  <span className="text-4xl block mb-4">📭</span>
+                  <p className="text-gray-500 font-medium">No campaigns found in history.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {historyData.map(job => {
+                    const deliveredCount = job.results?.filter(r => r.status.includes('Sent'))?.length || 0;
+                    const failedCount = job.results?.filter(r => r.status.includes('Failed'))?.length || 0;
+                    const skippedCount = job.results?.filter(r => r.status.includes('Skipped'))?.length || 0;
+                    const date = new Date(job.createdAt || parseInt(job.id)).toLocaleString();
+
+                    return (
+                      <div key={job.id} className="bg-white border text-left border-gray-200 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow">
+                        <div className="flex justify-between items-start mb-4">
+                          <div>
+                            <h3 className="text-lg font-bold text-gray-800">{job.templateName || 'Message'}</h3>
+                            <p className="text-sm text-gray-500">{date}</p>
+                          </div>
+                          <button 
+                            onClick={() => handleExportHistoryCSV(job)}
+                            className="text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded font-medium flex items-center gap-2"
+                          >
+                            📥 Download CSV
+                          </button>
+                        </div>
+                        <div className="flex justify-between items-center bg-gray-50 p-3 rounded-lg border border-gray-100">
+                            <div className="text-center px-4">
+                              <p className="text-xs text-gray-500 font-semibold">TOTAL</p>
+                              <p className="text-lg font-bold text-gray-700 text-left">{job.total}</p>
+                            </div>
+                            <div className="text-center px-4 border-l border-gray-200">
+                              <p className="text-xs text-emerald-600 font-semibold">DELIVERED</p>
+                              <p className="text-lg font-bold text-emerald-600 text-left">{deliveredCount}</p>
+                            </div>
+                            <div className="text-center px-4 border-l border-gray-200">
+                              <p className="text-xs text-red-500 font-semibold">FAILED</p>
+                              <p className="text-lg font-bold text-red-500 text-left">{failedCount}</p>
+                            </div>
+                            <div className="text-center px-4 border-l border-gray-200">
+                              <p className="text-xs text-gray-500 font-semibold">SKIPPED</p>
+                              <p className="text-lg font-bold text-gray-600 text-left">{skippedCount}</p>
+                            </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
         </div>
       </div>

@@ -5,6 +5,7 @@ const csv = require('csv-parser');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+const stripBom = require('strip-bom-stream');
 require('dotenv').config();
 
 const app = express();
@@ -54,6 +55,21 @@ const saveMediaCache = () => {
   fs.writeFileSync(mediaCachePath, JSON.stringify(mediaCache, null, 2));
 };
 
+// --- CAMPAIGN HISTORY ---
+const campaignHistoryPath = path.join(__dirname, 'campaign_history.json');
+let campaignHistory = [];
+if (fs.existsSync(campaignHistoryPath)) {
+  try {
+    campaignHistory = JSON.parse(fs.readFileSync(campaignHistoryPath, 'utf8'));
+  } catch(e) {
+    console.error("Could not parse campaign history file", e);
+  }
+}
+
+const saveCampaignHistory = () => {
+  fs.writeFileSync(campaignHistoryPath, JSON.stringify(campaignHistory, null, 2));
+};
+
 const getMetaTemplates = async () => {
   // If templates are cached and less than 1 hour old, use them to prevent rate limiting
   if (cachedTemplates && (Date.now() - cachedTemplatesTime < 3600000)) {
@@ -67,7 +83,7 @@ const getMetaTemplates = async () => {
   if (!WABA_ID || !ACCESS_TOKEN) return [];
 
   try {
-    const response = await axios.get(`https://graph.facebook.com/v20.0/${WABA_ID}/message_templates`, {
+    const response = await axios.get(`https://graph.facebook.com/v21.0/${WABA_ID}/message_templates`, {
       headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}` }
     });
 
@@ -130,6 +146,7 @@ app.post('/api/upload', upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).send('No file uploaded.');
 
   fs.createReadStream(req.file.path)
+    .pipe(stripBom())
     .pipe(csv())
     .on('data', (data) => {
       // Basic empty row trimming
@@ -168,11 +185,14 @@ app.post('/api/send', async (req, res) => {
 
   const jobId = Date.now().toString();
   jobs[jobId] = {
+    id: jobId,
     status: 'Running',
     total: validContacts.length,
     processed: 0,
     results: [],
     paused: false,
+    createdAt: Date.now(),
+    templateName: messageType === 'template' ? templateName : 'Custom Text Message'
   };
 
   res.json({ message: 'Sending started.', jobId });
@@ -185,9 +205,13 @@ app.post('/api/send', async (req, res) => {
     // If the template has an image header, download it and upload to Meta to get a media_id
     let cachedMediaId = null;
     if (template && template.headerType === 'IMAGE' && template.headerImageUrl) {
-      if (mediaCache[template.name]) {
+      const cached = mediaCache[template.name];
+      // Media IDs expire after 30 days. We re-upload if > 25 days old.
+      const isExpired = cached && (Date.now() - cached.uploadedAt > 25 * 24 * 60 * 60 * 1000);
+      
+      if (cached && !isExpired) {
         console.log(`[MEDIA CACHE] Using cached media_id for template: ${template.name}`);
-        cachedMediaId = mediaCache[template.name];
+        cachedMediaId = cached.id;
       } else {
         try {
           console.log('[MEDIA] Downloading header image from Meta CDN...');
@@ -203,7 +227,7 @@ app.post('/api/send', async (req, res) => {
           formData.append('file', fs.createReadStream(tmpPath), { filename: 'header.png', contentType: 'image/png' });
 
           const uploadRes = await axios.post(
-            `https://graph.facebook.com/v23.0/${PHONE_NUMBER_ID}/media`,
+            `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/media`,
             formData,
             { headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}`, ...formData.getHeaders() } }
           );
@@ -211,7 +235,10 @@ app.post('/api/send', async (req, res) => {
           console.log(`[MEDIA] Upload success! media_id = ${cachedMediaId}`);
           
           // Save to persistent cache so we don't upload it again 
-          mediaCache[template.name] = cachedMediaId;
+          mediaCache[template.name] = {
+            id: cachedMediaId,
+            uploadedAt: Date.now()
+          };
           saveMediaCache();
 
           // Clean up temp file
@@ -224,12 +251,21 @@ app.post('/api/send', async (req, res) => {
     }
 
     for (let contact of validContacts) {
-      // Pause check - wait until paused is false
-      while (jobs[jobId] && jobs[jobId].paused) {
+      if (jobs[jobId].stopped) break;
+
+      // Pause check - wait until paused is false or job is stopped
+      while (jobs[jobId] && jobs[jobId].paused && !jobs[jobId].stopped) {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
-      const phone = contact[mapping.phone];
+      if (jobs[jobId].stopped) break;
+
+      const phone = String(contact[mapping.phone] || '').trim();
+      if (!phone) continue;
+
+      if (jobs[jobId].stopped) break;
+
+      // No need to redeclare phone here, use the one from line 263
       if (!phone || phone.trim() === '') {
         jobs[jobId].results.push({
           name: mapping.name ? contact[mapping.name] : 'Unknown',
@@ -246,10 +282,22 @@ app.post('/api/send', async (req, res) => {
         cleanPhone = '91' + cleanPhone;
       }
       
+      // Duplicate Check (using cleaned phone for better matching)
+      if (!allowDuplicates && sentHistory[cleanPhone]) {
+        console.log(`[SKIP] Duplicate detected for ${cleanPhone}`);
+        jobs[jobId].results.push({
+          name: mapping.name ? contact[mapping.name] : (contact['name'] || contact['Name'] || 'Unknown'),
+          phone: cleanPhone,
+          status: 'Skipped ⏭️ (Already Sent)'
+        });
+        jobs[jobId].processed += 1;
+        continue;
+      }
+
       // Basic formatting check: must be at least 10 digits (minimum length including country code)
       if (cleanPhone.length < 10) {
         jobs[jobId].results.push({
-          name: mapping.name ? contact[mapping.name] : 'Unknown',
+          name: mapping.name ? contact[mapping.name] : (contact['name'] || contact['Name'] || 'Unknown'),
           phone: phone || 'N/A',
           status: 'Failed ❌ (Invalid Format)'
         });
@@ -259,18 +307,7 @@ app.post('/api/send', async (req, res) => {
       
       let msgStatus = 'Failed ❌';
       
-      // Duplicate Protection Logic
-      if (!allowDuplicates && messageType === 'template' && templateName && cleanPhone) {
-        if (sentHistory[cleanPhone] && sentHistory[cleanPhone].includes(templateName)) {
-          jobs[jobId].results.push({
-            name: mapping.name ? contact[mapping.name] : 'Unknown',
-            phone: phone || 'N/A',
-            status: 'Skipped ⏭️ (Already Sent)'
-          });
-          jobs[jobId].processed++;
-          continue; // Skip this iteration entirely
-        }
-      }
+      // Removed redundant duplicate check logic block here
 
       try {
         let payload = {
@@ -281,8 +318,9 @@ app.post('/api/send', async (req, res) => {
 
         if (messageType === 'text') {
           let textBody = customMessage || '';
-          Object.keys(mapping).forEach(key => {
-            textBody = textBody.replace(new RegExp(`{{${key}}}`, 'g'), contact[mapping[key]] || '');
+          // Replacing any {{CSV Column Name}} with the actual row data
+          Object.keys(contact).forEach(csvHeader => {
+            textBody = textBody.replace(new RegExp(`{{${csvHeader}}}`, 'g'), contact[csvHeader] || '');
           });
           
           payload.type = "text";
@@ -336,7 +374,7 @@ app.post('/api/send', async (req, res) => {
         if (ACCESS_TOKEN !== 'MOCK_TOKEN') {
           console.log(`[SEND] Payload to ${phone}:`, JSON.stringify(payload.template?.components, null, 2));
           try {
-            await axios.post(`https://graph.facebook.com/v23.0/${PHONE_NUMBER_ID}/messages`, payload, {
+            await axios.post(`https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`, payload, {
               headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}`, 'Content-Type': 'application/json' }
             });
           } catch (firstErr) {
@@ -356,7 +394,7 @@ app.post('/api/send', async (req, res) => {
                 });
               }
 
-              await axios.post(`https://graph.facebook.com/v23.0/${PHONE_NUMBER_ID}/messages`, fallbackPayload, {
+              await axios.post(`https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`, fallbackPayload, {
                 headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}`, 'Content-Type': 'application/json' }
               });
             } else {
@@ -367,13 +405,8 @@ app.post('/api/send', async (req, res) => {
         msgStatus = 'Sent ✅';
         
         // Update history
-        if (messageType === 'template' && templateName && cleanPhone) {
-          if (!sentHistory[cleanPhone]) sentHistory[cleanPhone] = [];
-          if (!sentHistory[cleanPhone].includes(templateName)) {
-            sentHistory[cleanPhone].push(templateName);
-            saveHistory();
-          }
-        }
+        sentHistory[phone] = { sentAt: Date.now(), jobId };
+        saveHistory();
       } catch (err) {
         // Detailed Meta Graph API error parsing
         const metaError = err.response?.data?.error?.message || err.message;
@@ -387,8 +420,14 @@ app.post('/api/send', async (req, res) => {
         console.error(`Failed to send to ${phone}: ${metaError}`);
       }
 
+      // If successful, log to history if duplicate check is enabled
+      if (msgStatus.includes('✅')) {
+        sentHistory[phone] = { sentAt: Date.now(), jobId };
+        saveHistory();
+      }
+
       jobs[jobId].results.push({
-        name: mapping.name ? contact[mapping.name] : 'Unknown',
+        name: mapping.name ? contact[mapping.name] : (contact['name'] || contact['Name'] || contact['NAME'] || contact[Object.keys(contact)[0]] || 'Unknown'),
         phone: phone || 'N/A',
         status: msgStatus
       });
@@ -397,8 +436,23 @@ app.post('/api/send', async (req, res) => {
       // Rate limit delay to prevent Meta blocking
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
-    jobs[jobId].status = 'Completed';
+    
+    if (jobs[jobId].stopped) {
+      jobs[jobId].status = 'Stopped';
+    } else {
+      jobs[jobId].status = 'Completed';
+    }
+    
+    // Save to persistent file
+    campaignHistory.push(jobs[jobId]);
+    saveCampaignHistory();
   })();
+});
+
+// History API
+app.get('/api/history', (req, res) => {
+  // Return descending reverse order so newest is at the top
+  res.json([...campaignHistory].reverse());
 });
 
 // Status Polling API
@@ -433,6 +487,32 @@ app.post('/api/resume/:jobId', (req, res) => {
     res.json({ message: 'Campaign resumed', status: job.status });
   } else {
     res.status(400).json({ error: 'Only paused campaigns can be resumed' });
+  }
+});
+
+// Stop Campaign API
+app.post('/api/stop/:jobId', (req, res) => {
+  const job = jobs[req.params.jobId];
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  
+  if (job.status === 'Running' || job.status === 'Paused') {
+    job.stopped = true;
+    job.paused = false; // unpause to break loop immediately
+    res.json({ message: 'Campaign stopped' });
+  } else {
+    res.status(400).json({ error: 'Only active campaigns can be stopped' });
+  }
+});
+
+// Active Job API (Recovery)
+app.get('/api/active-job', (req, res) => {
+  const activeJobId = Object.keys(jobs).find(
+    id => jobs[id].status === 'Running' || jobs[id].status === 'Paused'
+  );
+  if (activeJobId) {
+    res.json({ jobId: activeJobId, status: jobs[activeJobId] });
+  } else {
+    res.json({ jobId: null });
   }
 });
 
@@ -473,6 +553,20 @@ app.post('/webhook', (req, res) => {
     res.sendStatus(404);
   }
 });
+
+// --- JOB MEMORY CLEANUP ---
+// Clean up in-memory jobs every hour to prevent memory leaks
+// We only remove jobs that are Completed/Stopped and older than 12 hours
+setInterval(() => {
+  const now = Date.now();
+  Object.keys(jobs).forEach(id => {
+    const job = jobs[id];
+    if ((job.status === 'Completed' || job.status === 'Stopped') && (now - job.createdAt > 12 * 60 * 60 * 1000)) {
+      console.log(`[CLEANUP] Removing old job ${id} from memory`);
+      delete jobs[id];
+    }
+  });
+}, 3600000); // Every 1 hour
 
 app.listen(port, () => {
   console.log(`Backend server running on http://localhost:${port}`);
