@@ -19,6 +19,7 @@ function App() {
   
   const [jobId, setJobId] = useState(null);
   const [jobStatus, setJobStatus] = useState(null);
+  const [refreshingTemplates, setRefreshingTemplates] = useState(false);
 
   useEffect(() => {
     fetch('/api/templates')
@@ -94,7 +95,12 @@ function App() {
       
       const newMapping = {};
       result.headers.forEach(h => {
-        if (h.toLowerCase().includes('phone')) newMapping['phone'] = h;
+        const lowerH = h.toLowerCase();
+        if (lowerH.includes('phone')) newMapping['phone'] = h;
+        if (lowerH.includes('name')) newMapping['name'] = h;
+        if (lowerH.includes('image') || lowerH.includes('video') || lowerH.includes('doc') || lowerH.includes('media')) {
+          newMapping['header_media_url'] = h;
+        }
       });
       setMapping(newMapping);
       
@@ -106,6 +112,35 @@ function App() {
 
   const handleMappingChange = (variable, header) => {
     setMapping(prev => ({ ...prev, [variable]: header }));
+  };
+
+  const handleRefreshTemplates = async () => {
+    setRefreshingTemplates(true);
+    try {
+      const res = await fetch('/api/templates/refresh');
+      const data = await res.json();
+      setTemplates(data);
+      if (data.length > 0 && !selectedTemplate) setSelectedTemplate(data[0].name);
+      setStatus('Templates updated from Meta API!');
+    } catch (err) {
+      console.error("Refresh error", err);
+      setStatus('Failed to refresh templates.');
+    } finally {
+      setTimeout(() => setRefreshingTemplates(false), 1000);
+    }
+  };
+
+  const handleClearHistory = async () => {
+    if (!window.confirm('Are you sure you want to clear all campaign history? This cannot be undone.')) return;
+    try {
+      await fetch('http://localhost:3001/api/history/clear', { method: 'POST' });
+      setCampaignHistory([]);
+      setJobStatus(null);
+      setJobId(null);
+      setStatus('Campaign history cleared.');
+    } catch (err) {
+      console.error('Failed to clear history:', err);
+    }
   };
 
   const handleSend = async () => {
@@ -311,16 +346,27 @@ function App() {
                 </div>
 
                 {messageType === 'template' ? (
-                  <select 
-                    className="w-full border border-gray-300 rounded-md p-3 focus:ring-2 focus:ring-emerald-500 outline-none shadow-sm text-gray-700 bg-white"
-                    value={selectedTemplate}
-                    onChange={(e) => setSelectedTemplate(e.target.value)}
-                  >
-                    <option value="" disabled>-- Select a Template --</option>
-                    {templates.map(t => (
-                      <option key={t.name} value={t.name}>{t.name}</option>
-                    ))}
-                  </select>
+                  <div className="flex gap-2">
+                    <select 
+                      className="flex-1 border border-gray-300 rounded-md p-3 focus:ring-2 focus:ring-emerald-500 outline-none shadow-sm text-gray-700 bg-white"
+                      value={selectedTemplate}
+                      onChange={(e) => setSelectedTemplate(e.target.value)}
+                    >
+                      <option value="" disabled>-- Select a Template --</option>
+                      {templates.map(t => (
+                        <option key={`${t.name}-${t.language}`} value={t.name}>{t.name} ({t.language})</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={handleRefreshTemplates}
+                      disabled={refreshingTemplates}
+                      className={`px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md border border-gray-300 font-medium transition-all flex items-center gap-2 ${refreshingTemplates ? 'animate-pulse opacity-75' : ''}`}
+                      title="Sync from Meta API"
+                      type="button"
+                    >
+                      {refreshingTemplates ? '⌛' : '🔄'} Sync
+                    </button>
+                  </div>
                 ) : (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Message Body (Use {'{{Column}}'} to insert CSV dynamic fields)</label>
@@ -390,22 +436,76 @@ function App() {
                       </select>
                     </div>
 
-                    {/* Template Variables */}
-                    {messageType === 'template' && currentTemplate && currentTemplate.variables && currentTemplate.variables.map(variable => (
-                      <div key={variable} className="flex flex-col gap-2 p-4 bg-white rounded-lg border border-gray-100 shadow-sm">
-                        <label className="text-sm font-semibold text-gray-700 flex items-center justify-between">
-                          <span>{`{{${variable}}}`}</span>
-                          <span className="text-xs text-gray-400 font-normal">Template Variable</span>
+                    {/* Image URL Mapping (Optional) */}
+                    {messageType === 'template' && currentTemplate && currentTemplate.componentsData && currentTemplate.componentsData.header.type && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(currentTemplate.componentsData.header.type) && (
+                      <div className="flex flex-col gap-2 p-4 bg-white rounded-lg border border-gray-100 shadow-sm">
+                        <label className="text-sm font-bold text-gray-700 flex items-center justify-between">
+                          <span>Header {currentTemplate.componentsData.header.type} Source</span>
+                          <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded uppercase font-bold shadow-sm">Media Header</span>
                         </label>
                         <select 
-                          className="border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-emerald-500 outline-none"
-                          value={mapping[variable] || ''}
-                          onChange={(e) => handleMappingChange(variable, e.target.value)}
+                          className="border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-emerald-500 outline-none bg-white"
+                          value={mapping['header_media_url'] || ''}
+                          onChange={(e) => handleMappingChange('header_media_url', e.target.value)}
                         >
-                          <option value="">-- Select CSV Column --</option>
+                          <option value="">-- Use Default Template Media --</option>
                           {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
                         </select>
                       </div>
+                    )}
+
+                    {/* Header Variables */}
+                    {messageType === 'template' && currentTemplate && currentTemplate.componentsData && currentTemplate.componentsData.header.variables.map(variable => (
+                      <div key={`header_${variable}`} className="flex flex-col gap-2 p-4 bg-white rounded-lg border border-gray-100 shadow-sm">
+                        <label className="text-sm font-semibold text-gray-700 flex items-center justify-between">
+                          <span>{`Header Variable: {{${variable}}}`}</span>
+                        </label>
+                        <select 
+                          className="border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                          value={mapping[`header_${variable}`] || ''}
+                          onChange={(e) => handleMappingChange(`header_${variable}`, e.target.value)}
+                        >
+                          <option value="">-- Select --</option>
+                          {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
+                        </select>
+                      </div>
+                    ))}
+
+                    {/* Body Variables */}
+                    {messageType === 'template' && currentTemplate && currentTemplate.componentsData && currentTemplate.componentsData.body.variables.map(variable => (
+                      <div key={`body_${variable}`} className="flex flex-col gap-2 p-4 bg-white rounded-lg border border-gray-100 shadow-sm">
+                        <label className="text-sm font-semibold text-gray-700 flex items-center justify-between">
+                          <span>{`Body Variable: {{${variable}}}`}</span>
+                        </label>
+                        <select 
+                          className="border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                          value={mapping[`body_${variable}`] || mapping[variable] || ''}
+                          onChange={(e) => handleMappingChange(`body_${variable}`, e.target.value)}
+                        >
+                          <option value="">-- Select --</option>
+                          {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
+                        </select>
+                      </div>
+                    ))}
+
+                    {/* Button Dynamic Fields */}
+                    {messageType === 'template' && currentTemplate && currentTemplate.componentsData && currentTemplate.componentsData.buttons.map((btn, idx) => (
+                      btn.variables.map(v => (
+                        <div key={`btn_${idx}_${v}`} className="flex flex-col gap-2 p-4 bg-white rounded-lg border border-gray-100 shadow-sm">
+                          <label className="text-sm font-semibold text-gray-700 flex items-center justify-between">
+                            <span>{`Button ${idx + 1} (${btn.text}): URL Suffix`}</span>
+                            <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded uppercase font-bold shadow-sm">Dynamic URL</span>
+                          </label>
+                          <select 
+                            className="border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                            value={mapping[`button_${idx}_${v}`] || ''}
+                            onChange={(e) => handleMappingChange(`button_${idx}_${v}`, e.target.value)}
+                          >
+                            <option value="">-- Use Template Default --</option>
+                            {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
+                          </select>
+                        </div>
+                      ))
                     ))}
                   </div>
                   {messageType === 'text' && (
@@ -446,9 +546,10 @@ function App() {
               ) : (
                 (() => {
                   const total = jobStatus.total || 0;
-                  const sent = jobStatus.results.filter(r => r.status.includes('✅')).length;
-                  const failed = jobStatus.results.filter(r => r.status.includes('❌')).length;
-                  const skipped = jobStatus.results.filter(r => r.status.includes('⏭️')).length;
+                  const sent = jobStatus.results.filter(r => r.status.includes('✅') || r.status.toLowerCase().includes('sent')).length;
+                  const failed = jobStatus.results.filter(r => r.status.includes('❌') || r.status.toLowerCase().includes('failed')).length;
+                  const skipped = jobStatus.results.filter(r => r.status.includes('⏭️') || r.status.toLowerCase().includes('skipped')).length;
+                  const processed = jobStatus.results.length;
 
             const filteredResults = jobStatus.results.filter(r => 
               r.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -458,13 +559,30 @@ function App() {
             return (
               <div className="bg-gray-50 rounded-xl p-8 border border-gray-200 shadow-inner animate-fade-in-up mt-8">
                 <div className="flex justify-between items-center mb-6 border-b border-gray-200 pb-4">
-                  <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-4">
-                    <span>Campaign Output CRM</span>
-                    {jobStatus.status === 'Completed' || jobStatus.status === 'Stopped' ? (
-                      <span className="text-sm bg-emerald-100 text-emerald-800 px-2 py-1 rounded-full font-semibold text-xs border border-emerald-200">{jobStatus.status.toUpperCase()}</span>
-                    ) : (
-                      <div className="flex gap-2">
-                        {jobStatus.status === 'Running' && (
+                  <div className="flex flex-col">
+                    <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-4">
+                      <span>Campaign Output CRM</span>
+                      {jobStatus.status === 'Completed' || jobStatus.status === 'Stopped' ? (
+                        <span className="text-sm bg-emerald-100 text-emerald-800 px-2 py-1 rounded-full font-semibold text-xs border border-emerald-200">{jobStatus.status.toUpperCase()}</span>
+                      ) : (
+                        <div className="flex gap-2 items-center">
+                          <span className={`animate-pulse h-2 w-2 rounded-full ${jobStatus.status.includes('Restart') ? 'bg-orange-500' : 'bg-emerald-500'}`}></span>
+                          <span className="text-xs font-bold text-gray-400 tracking-widest uppercase">
+                            {jobStatus.status}
+                          </span>
+                        </div>
+                      )}
+                    </h2>
+                    {jobStatus.createdAt && (
+                       <p className="text-[10px] text-gray-400 mt-1 uppercase font-bold">
+                         Started at: {new Date(jobStatus.createdAt).toLocaleTimeString()} 
+                         &bull; Elapsed: {Math.floor((Date.now() - jobStatus.createdAt) / 60000)}m
+                       </p>
+                    )}
+                  </div>
+                  <div className="text-right flex items-center gap-4">
+                    <div className="flex gap-2 mr-4">
+                       {jobStatus.status === 'Running' && (
                           <button 
                             onClick={handlePause}
                             className="text-xs bg-amber-50 text-amber-700 px-3 py-1.5 rounded-lg font-bold border border-amber-200 hover:bg-amber-100 transition-all flex items-center gap-1.5 shadow-sm"
@@ -480,24 +598,23 @@ function App() {
                             <span className="text-sm">▶️</span> Resume Campaign
                           </button>
                         )}
-                        <button 
-                          onClick={handleStop}
-                          className="text-xs bg-red-50 text-red-700 px-3 py-1.5 rounded-lg font-bold border border-red-200 hover:bg-red-100 transition-all flex items-center gap-1.5 shadow-sm"
-                        >
-                          <span className="text-sm">🛑</span> Stop
-                        </button>
-                      </div>
-                    )}
-                  </h2>
-                  <div className="text-right flex items-center gap-4">
-                     <div className="relative">
-                        <input 
-                          type="text" 
-                          placeholder="Search name or phone..." 
-                          value={searchTerm}
-                          onChange={(e) => setSearchTerm(e.target.value)}
-                          className="border border-gray-300 rounded-lg px-4 py-2 text-sm shadow-sm focus:ring-emerald-500 focus:border-emerald-500"
-                        />
+                        {(jobStatus.status === 'Running' || jobStatus.status === 'Paused') && (
+                          <button 
+                            onClick={handleStop}
+                            className="text-xs bg-red-50 text-red-700 px-3 py-1.5 rounded-lg font-bold border border-red-200 hover:bg-red-100 transition-all flex items-center gap-1.5 shadow-sm"
+                          >
+                            <span className="text-sm">🛑</span> Stop
+                          </button>
+                        )}
+                    </div>
+                    <div className="relative">
+                      <input 
+                        type="text" 
+                        placeholder="Search name or phone..." 
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="border border-gray-300 rounded-lg px-4 py-2 text-sm shadow-sm focus:ring-emerald-500 focus:border-emerald-500"
+                      />
                      </div>
                   </div>
                 </div>
@@ -603,7 +720,15 @@ function App() {
 
     {activeTab === 'history' && (
             <div className="animate-fade-in-up">
-              <h2 className="text-2xl font-bold text-gray-800 mb-6">Past Campaigns</h2>
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-gray-800">Past Campaigns</h2>
+                <button 
+                  onClick={handleClearHistory}
+                  className="text-xs text-red-500 hover:text-red-700 font-bold border border-red-200 hover:border-red-400 px-3 py-1 rounded-lg transition-all bg-white"
+                >
+                  Clear history 
+                </button>
+              </div>
               {historyData.length === 0 ? (
                 <div className="text-center p-12 bg-gray-50 rounded-xl border border-gray-200">
                   <span className="text-4xl block mb-4">📭</span>
@@ -612,9 +737,9 @@ function App() {
               ) : (
                 <div className="space-y-4">
                   {historyData.map(job => {
-                    const deliveredCount = job.results?.filter(r => r.status.includes('Sent'))?.length || 0;
-                    const failedCount = job.results?.filter(r => r.status.includes('Failed'))?.length || 0;
-                    const skippedCount = job.results?.filter(r => r.status.includes('Skipped'))?.length || 0;
+                    const deliveredCount = job.results?.filter(r => r.status.includes('✅') || r.status.toLowerCase().includes('sent'))?.length || 0;
+                    const failedCount = job.results?.filter(r => r.status.includes('❌') || r.status.toLowerCase().includes('failed'))?.length || 0;
+                    const skippedCount = job.results?.filter(r => r.status.includes('⏭️') || r.status.toLowerCase().includes('skipped'))?.length || 0;
                     const date = new Date(job.createdAt || parseInt(job.id)).toLocaleString();
 
                     return (

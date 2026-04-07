@@ -6,3 +6,4 @@ frontend/node_modules/
 frontend/dist/
 campaign_history.json
 media_cache.json
+active_jobs.json
