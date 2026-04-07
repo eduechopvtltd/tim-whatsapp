@@ -17,6 +17,6 @@
     "express": "^5.2.1",
     "form-data": "^4.0.5",
     "multer": "^2.1.1",
-    "strip-bom-stream": "^5.0.0"
+    "strip-bom-stream": "^4.0.0"
   }
 }

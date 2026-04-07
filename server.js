@@ -205,11 +205,17 @@ app.post('/api/send', async (req, res) => {
     // If the template has an image header, download it and upload to Meta to get a media_id
     let cachedMediaId = null;
     if (template && template.headerType === 'IMAGE' && template.headerImageUrl) {
-      const cached = mediaCache[template.name];
-      // Media IDs expire after 30 days. We re-upload if > 25 days old.
-      const isExpired = cached && (Date.now() - cached.uploadedAt > 25 * 24 * 60 * 60 * 1000);
+      let cached = mediaCache[template.name];
       
-      if (cached && !isExpired) {
+      // Compatibility Logic: If old format (just a string), convert to object or treat as expired
+      if (typeof cached === 'string') {
+        cached = { id: cached, uploadedAt: 0 }; // Set to 0 to force re-upload for new timestamp metadata
+      }
+      
+      // Media IDs expire after 30 days. We re-upload if > 25 days old.
+      const isExpired = !cached || !cached.uploadedAt || (Date.now() - cached.uploadedAt > 25 * 24 * 60 * 60 * 1000);
+      
+      if (cached && cached.id && !isExpired) {
         console.log(`[MEDIA CACHE] Using cached media_id for template: ${template.name}`);
         cachedMediaId = cached.id;
       } else {
@@ -351,12 +357,14 @@ app.post('/api/send', async (req, res) => {
             payload.template.components = [];
 
             // Add Header component if it's an image — use cached media_id
-            if (template.headerType === 'IMAGE' && cachedMediaId) {
+            if (template.headerType === 'IMAGE') {
+              // Note: If cachedMediaId is missing but required, we still add the component
+              // to prevent Format Mismatch errors (though Meta may reject the null ID later)
               payload.template.components.push({
                 type: "header",
                 parameters: [{
                   type: "image",
-                  image: { id: cachedMediaId }
+                  image: { id: cachedMediaId || "MISSING_MEDIA_ID" }
                 }]
               });
             }
