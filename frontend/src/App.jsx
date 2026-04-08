@@ -134,7 +134,7 @@ function App() {
     if (!window.confirm('Are you sure you want to clear all campaign history? This cannot be undone.')) return;
     try {
       await fetch('http://localhost:3001/api/history/clear', { method: 'POST' });
-      setCampaignHistory([]);
+      setHistoryData([]);
       setJobStatus(null);
       setJobId(null);
       setStatus('Campaign history cleared.');
