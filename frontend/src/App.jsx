@@ -30,6 +30,7 @@ function App() {
   });
   const [savingConfig, setSavingConfig] = useState(false);
   const [configError, setConfigError] = useState(null);
+  const [configSuccess, setConfigSuccess] = useState(false);
 
   useEffect(() => {
     fetch(`${API_BASE}/api/templates`)
@@ -41,11 +42,17 @@ function App() {
       .catch(err => console.error("Could not fetch templates", err));
   }, []);
 
-  // Fetch Meta Config on mount
+  // Fetch Meta Config on mount — show Connected badge if creds already saved
   useEffect(() => {
     fetch(`${API_BASE}/api/config`)
       .then(res => res.json())
-      .then(data => setConfig(data))
+      .then(data => {
+        setConfig(data);
+        // If all 3 credentials are already present, show Connected immediately
+        if (data.PHONE_NUMBER_ID && data.WABA_ID && data.ACCESS_TOKEN) {
+          setConfigSuccess(true);
+        }
+      })
       .catch(err => console.error("Could not fetch config", err));
   }, []);
 
@@ -273,10 +280,10 @@ function App() {
       
       const data = await res.json();
       setStatus(data.message);
-      
+      setConfigSuccess(true);
+      // Do NOT auto-hide — keep Connected state permanently until credentials change
       // Auto-refresh templates with new credentials
       handleRefreshTemplates();
-      alert('Configuration synced successfully!');
     } catch (err) {
       setConfigError(err.message);
     } finally {
@@ -851,7 +858,7 @@ function App() {
                       type="text" 
                       className="w-full p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all outline-none"
                       value={config.PHONE_NUMBER_ID}
-                      onChange={(e) => setConfig({...config, PHONE_NUMBER_ID: e.target.value})}
+                      onChange={(e) => { setConfig({...config, PHONE_NUMBER_ID: e.target.value}); setConfigSuccess(false); }}
                       placeholder="e.g. 1069..."
                       required
                     />
@@ -862,7 +869,7 @@ function App() {
                       type="text" 
                       className="w-full p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all outline-none"
                       value={config.WABA_ID}
-                      onChange={(e) => setConfig({...config, WABA_ID: e.target.value})}
+                      onChange={(e) => { setConfig({...config, WABA_ID: e.target.value}); setConfigSuccess(false); }}
                       placeholder="e.g. 1971..."
                       required
                     />
@@ -875,7 +882,7 @@ function App() {
                     className="w-full p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all outline-none font-mono text-xs"
                     rows="4"
                     value={config.ACCESS_TOKEN}
-                    onChange={(e) => setConfig({...config, ACCESS_TOKEN: e.target.value})}
+                    onChange={(e) => { setConfig({...config, ACCESS_TOKEN: e.target.value}); setConfigSuccess(false); }}
                     placeholder="EAAN8ltad..."
                     required
                   />
@@ -891,18 +898,32 @@ function App() {
                   <div className="text-xs text-gray-400">
                     * Changes will be saved to your local .env file.
                   </div>
-                  <button 
-                    type="submit"
-                    disabled={savingConfig}
-                    className={`px-8 py-3 rounded-lg font-bold text-white transition-all transform active:scale-95 shadow-md ${savingConfig ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700'}`}
-                  >
-                    {savingConfig ? (
-                      <span className="flex items-center gap-2">
-                        <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                        Connecting...
+                  <div className="flex items-center gap-3">
+                    {configSuccess && (
+                      <span className="flex items-center gap-1.5 text-emerald-600 font-semibold text-sm animate-pulse">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                        Connected!
                       </span>
-                    ) : '🔗 Connect & Sync Backend'}
-                  </button>
+                    )}
+                    <button 
+                      type="submit"
+                      disabled={savingConfig}
+                      className={`px-8 py-3 rounded-lg font-bold text-white transition-all transform active:scale-95 shadow-md ${
+                        configSuccess
+                          ? 'bg-emerald-600 cursor-default'
+                          : savingConfig
+                          ? 'bg-gray-400 cursor-not-allowed'
+                          : 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700'
+                      }`}
+                    >
+                      {savingConfig ? (
+                        <span className="flex items-center gap-2">
+                          <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                          Connecting...
+                        </span>
+                      ) : configSuccess ? '✅ Connected' : '🔗 Connect & Sync Backend'}
+                    </button>
+                  </div>
                 </div>
               </form>
             </div>

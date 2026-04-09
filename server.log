@@ -10,3 +10,230 @@ Meta Fetch Error: {
 }
 Incoming Webhook Verification Request: { mode: 'subscribe', token: 'my_secret_token', challenge: 'test123' }
 WEBHOOK_VERIFIED
+Meta Fetch Error: {
+  error: {
+    message: '(#200) You do not have permission to access this field.',
+    type: 'OAuthException',
+    code: 200,
+    fbtrace_id: 'AYvM9Udo3TO3MxksV7V3klr'
+  }
+}
+Meta Fetch Error: {
+  error: {
+    message: '(#200) You do not have permission to access this field.',
+    type: 'OAuthException',
+    code: 200,
+    fbtrace_id: 'AiJnxy4dMvUdALc8_Fql0d0'
+  }
+}
+Meta Fetch Error: {
+  error: {
+    message: '(#200) You do not have permission to access this field.',
+    type: 'OAuthException',
+    code: 200,
+    fbtrace_id: 'Axd1WV2SAzngJvgXAOuloDy'
+  }
+}
+Meta Fetch Error: {
+  error: {
+    message: '(#200) You do not have permission to access this field.',
+    type: 'OAuthException',
+    code: 200,
+    fbtrace_id: 'A2Zbpmv_UMVTCl2J2zskIRx'
+  }
+}
+[CONFIG] Credentials updated and saved to .env
+Meta Fetch Error: {
+  error: {
+    message: '(#200) You do not have permission to access this field.',
+    type: 'OAuthException',
+    code: 200,
+    fbtrace_id: 'AScu9SYWSFO3CSl6aTyoJzg'
+  }
+}
+[CONFIG] Credentials updated and saved to .env
+Meta Fetch Error: {
+  error: {
+    message: '(#200) You do not have permission to access this field.',
+    type: 'OAuthException',
+    code: 200,
+    fbtrace_id: 'ACZa9pEjvwjHFpFq38YUmTt'
+  }
+}
+[CONFIG] Credentials updated and saved to .env
+Meta Fetch Error: {
+  error: {
+    message: '(#200) You do not have permission to access this field.',
+    type: 'OAuthException',
+    code: 200,
+    fbtrace_id: 'AW4hVpO7QGmk0XWSFJu-DVh'
+  }
+}
+Meta Fetch Error: {
+  error: {
+    message: '(#200) You do not have permission to access this field.',
+    type: 'OAuthException',
+    code: 200,
+    fbtrace_id: 'AZHsg7LY5M99nD1l5NtKQqs'
+  }
+}
+Meta Fetch Error: {
+  error: {
+    message: '(#200) You do not have permission to access this field.',
+    type: 'OAuthException',
+    code: 200,
+    fbtrace_id: 'A9V9QfRh800MSRudMjdPzpA'
+  }
+}
+Meta Fetch Error: {
+  error: {
+    message: '(#200) You do not have permission to access this field.',
+    type: 'OAuthException',
+    code: 200,
+    fbtrace_id: 'Af94J9DbaQ3JG9glAnLDjYM'
+  }
+}
+Meta Fetch Error: {
+  error: {
+    message: '(#200) You do not have permission to access this field.',
+    type: 'OAuthException',
+    code: 200,
+    fbtrace_id: 'Ax5XCUKv85MpeM8p35dIBoO'
+  }
+}
+Meta Fetch Error: {
+  error: {
+    message: '(#200) You do not have permission to access this field.',
+    type: 'OAuthException',
+    code: 200,
+    fbtrace_id: 'APasyDTNWpvmV0CDliJA34X'
+  }
+}
+[CONFIG] Credentials updated and saved to .env
+Meta Fetch Error: {
+  error: {
+    message: '(#200) You do not have permission to access this field.',
+    type: 'OAuthException',
+    code: 200,
+    fbtrace_id: 'AkDnEAD2-SbbFZSCDY-qUVv'
+  }
+}
+Meta Fetch Error: {
+  error: {
+    message: '(#200) You do not have permission to access this field.',
+    type: 'OAuthException',
+    code: 200,
+    fbtrace_id: 'ASuxT4VW6ZZkJ30cmtAmtl_'
+  }
+}
+Meta Fetch Error: {
+  error: {
+    message: '(#200) You do not have permission to access this field.',
+    type: 'OAuthException',
+    code: 200,
+    fbtrace_id: 'AxzrJPNFnMDPftz7jZ6jGsv'
+  }
+}
+Meta Fetch Error: {
+  error: {
+    message: '(#200) You do not have permission to access this field.',
+    type: 'OAuthException',
+    code: 200,
+    fbtrace_id: 'AhFIRF6U9TDP7d7gWN8iFJf'
+  }
+}
+Meta Fetch Error: {
+  error: {
+    message: '(#200) You do not have permission to access this field.',
+    type: 'OAuthException',
+    code: 200,
+    fbtrace_id: 'AEhu8Irpx-wFrvSOizpEQUs'
+  }
+}
+[CONFIG] Credentials updated and saved to .env
+Meta Fetch Error: {
+  error: {
+    message: '(#200) You do not have permission to access this field.',
+    type: 'OAuthException',
+    code: 200,
+    fbtrace_id: 'AoFjH_zBgj49rH_Md-5yXP4'
+  }
+}
+Meta Fetch Error: {
+  error: {
+    message: '(#200) You do not have permission to access this field.',
+    type: 'OAuthException',
+    code: 200,
+    fbtrace_id: 'A8phubwpNuhSd9NTpJ7u42_'
+  }
+}
+Meta Fetch Error: {
+  error: {
+    message: '(#200) You do not have permission to access this field.',
+    type: 'OAuthException',
+    code: 200,
+    fbtrace_id: 'AlJcbmq2jjhh2njZzO-1Ok6'
+  }
+}
+Meta Fetch Error: {
+  error: {
+    message: '(#200) You do not have permission to access this field.',
+    type: 'OAuthException',
+    code: 200,
+    fbtrace_id: 'ACB9x2reWAKTMi2NTWlb3Vd'
+  }
+}
+Meta Fetch Error: {
+  error: {
+    message: '(#200) You do not have permission to access this field.',
+    type: 'OAuthException',
+    code: 200,
+    fbtrace_id: 'AP0OmAdi2x-c-ybwiZFO-Ez'
+  }
+}
+[CONFIG] Credentials updated and saved to .env
+Meta Fetch Error: {
+  error: {
+    message: '(#200) You do not have permission to access this field.',
+    type: 'OAuthException',
+    code: 200,
+    fbtrace_id: 'AixMmFbwBEU1it5RgUp0lvN'
+  }
+}
+[CONFIG] Credentials updated and saved to .env
+Meta Fetch Error: {
+  error: {
+    message: '(#200) You do not have permission to access this field.',
+    type: 'OAuthException',
+    code: 200,
+    fbtrace_id: 'AyoN7tf8_Up6wDJCoWdS1Al'
+  }
+}
+[CONFIG] Credentials updated and saved to .env
+Meta Fetch Error: {
+  error: {
+    message: '(#200) You do not have permission to access this field.',
+    type: 'OAuthException',
+    code: 200,
+    fbtrace_id: 'AKj9Gnz40agzivoK03Teh0q'
+  }
+}
+[CONFIG] Credentials updated and saved to .env
+Meta Fetch Error: {
+  error: {
+    message: '(#200) You do not have permission to access this field.',
+    type: 'OAuthException',
+    code: 200,
+    fbtrace_id: 'A5Be01c7eO0DHLIqm4nIWue'
+  }
+}
+Meta Fetch Error: {
+  error: {
+    message: '(#200) You do not have permission to access this field.',
+    type: 'OAuthException',
+    code: 200,
+    fbtrace_id: 'AIyPLZQeV99grq8KLhKHn0n'
+  }
+}
+[SAVE] Saving state to disk (Source: unknown).. 
+[SAVE] Success: History size 0, Active jobs 0
