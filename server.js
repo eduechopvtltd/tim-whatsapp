@@ -11,6 +11,7 @@ require('dotenv').config();
 
 const app = express();
 const port = process.env.PORT || 3001;
+const upload = multer({ dest: 'uploads/' });
 
 // In-memory status tracking
 const jobs = {};
@@ -40,11 +41,17 @@ const loadData = () => {
   }
 };
 
-const saveData = () => {
-  fs.writeFileSync(campaignHistoryFile, JSON.stringify(campaignHistory, null, 2));
-  fs.writeFileSync(sentHistoryFile, JSON.stringify(sentHistory, null, 2));
-  fs.writeFileSync(mediaCacheFile, JSON.stringify(mediaCache, null, 2));
-  fs.writeFileSync(activeJobsFile, JSON.stringify(jobs, null, 2));
+const saveData = (source = 'unknown') => {
+  console.log(`[SAVE] Saving state to disk (Source: ${source}).. `);
+  try {
+    fs.writeFileSync(campaignHistoryFile, JSON.stringify(campaignHistory, null, 2));
+    fs.writeFileSync(sentHistoryFile, JSON.stringify(sentHistory, null, 2));
+    fs.writeFileSync(mediaCacheFile, JSON.stringify(mediaCache, null, 2));
+    fs.writeFileSync(activeJobsFile, JSON.stringify(jobs, null, 2));
+    console.log(`[SAVE] Success: History size ${campaignHistory.length}, Active jobs ${Object.keys(jobs).length}`);
+  } catch (err) {
+    console.error(`[SAVE] Failed to save data: ${err.message}`);
+  }
 };
 
 loadData();
@@ -58,6 +65,8 @@ const mapMetaError = (err) => {
   if (code === 131031) return 'Low Quality Account 🚩';
   if (code === 131009) return 'Parameter Mismatch ❌';
   if (code === 131026) return 'Invalid Number 📵';
+  if (code === 131042) return 'Payment Method Required 💳';
+  if (code === 133010) return 'Number Not Registered/Verified 📵';
   return `Error (${code}): ${err.message || 'Meta Rejected'}`;
 };
 
@@ -197,11 +206,17 @@ app.post('/api/upload', upload.single('file'), (req, res) => {
       if (hasContent) results.push(data);
     })
     .on('end', () => {
-      fs.unlinkSync(req.file.path);
+      // Clean up temp file only on success
+      try { fs.unlinkSync(req.file.path); } catch(e) {}
       res.json({
         headers: Object.keys(results[0] || {}),
         data: results,
       });
+    })
+    .on('error', (err) => {
+      // Clean up temp file on error too
+      try { fs.unlinkSync(req.file.path); } catch(e) {}
+      res.status(500).json({ error: 'Failed to parse CSV: ' + err.message });
     });
 });
 
@@ -215,11 +230,14 @@ app.post('/api/send', async (req, res) => {
 
   let template = null;
   if (messageType !== 'text') {
+    if (!templateName) {
+      return res.status(400).json({ error: 'Template name is required for template messages' });
+    }
     const templates = await getMetaTemplates();
     template = templates.find(t => t.name === templateName);
     
     if (!template) {
-      return res.status(404).json({ error: 'Template not found locally or on Meta' });
+      return res.status(404).json({ error: 'Template not found locally or on Meta. Try refreshing templates.' });
     }
   }
 
@@ -315,7 +333,7 @@ app.post('/api/send', async (req, res) => {
 
       if (jobs[jobId].stopped) break;
 
-      // No need to redeclare phone here, use the one from line 263
+      // Phone is already validated via validContacts filter, this is an extra guard
       if (!phone || phone.trim() === '') {
         jobs[jobId].results.push({
           name: mapping.name ? contact[mapping.name] : 'Unknown',
@@ -327,7 +345,7 @@ app.post('/api/send', async (req, res) => {
       }
       let cleanPhone = phone.replace(/\D/g, '');
       
-      // Auto-append India country code if only 10 digits provided
+      // Auto-append country code only if number is exactly 10 digits (local format without code)
       if (cleanPhone.length === 10) {
         cleanPhone = '91' + cleanPhone;
       }
@@ -432,8 +450,10 @@ app.post('/api/send', async (req, res) => {
             if (btn.type === 'URL' && btn.variables.length > 0) {
               const btnComp = { type: "button", sub_type: "url", index: idx.toString(), parameters: [] };
               const val = String(contact[mapping[`button_${idx}_url_suffix`]] || '');
-              btnComp.parameters.push({ type: "text", text: val });
-              payload.template.components.push(btnComp);
+              if (val) {
+                btnComp.parameters.push({ type: "text", text: val });
+                payload.template.components.push(btnComp);
+              }
             }
 
             if (btn.type === 'FLOW') {
@@ -451,7 +471,8 @@ app.post('/api/send', async (req, res) => {
         }
 
         if (ACCESS_TOKEN !== 'MOCK_TOKEN') {
-          console.log(`[SEND] Payload to ${phone}:`, JSON.stringify(payload.template?.components, null, 2));
+          // Log the FULL payload for debugging
+          console.log(`[SEND] Full Payload to ${cleanPhone}:`, JSON.stringify(payload, null, 2));
           try {
             await axios.post(`https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`, payload, {
               headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}`, 'Content-Type': 'application/json' }
@@ -500,20 +521,21 @@ app.post('/api/send', async (req, res) => {
         console.error(`Failed to send to ${phone}: ${metaError}`);
       }
 
-      // If successful, log to history if duplicate check is enabled
+      // If successful, update sentHistory with cleaned phone (used for dedup)
       if (msgStatus.includes('✅')) {
         sentHistory[cleanPhone] = { sentAt: Date.now(), jobId };
-        saveData();
+        // Note: saveData() is called after the result is pushed below
       }
 
       jobs[jobId].results.push({
         name: mapping.name ? contact[mapping.name] : (contact['name'] || contact['Name'] || contact['NAME'] || contact[Object.keys(contact)[0]] || 'Unknown'),
-        phone: phone || 'N/A',
+        phone: cleanPhone || phone || 'N/A',
         status: msgStatus
       });
       jobs[jobId].processed += 1;
+      saveData(); // Single save per contact processed
 
-      // Rate limit delay: 500ms provides a safe pace for Meta and local stability
+      // Rate limit delay: 500ms provides a safe pace for Meta
       await sleep(500);
     }
     
@@ -536,9 +558,13 @@ app.get('/api/history', (req, res) => {
 
 // Clear history API
 app.post('/api/history/clear', (req, res) => {
+  console.log('[CLEAR] Request received to wipe history');
   campaignHistory = [];
-  jobs = {}; // Also clear active job memory when wiping history
-  saveData();
+  Object.keys(jobs).forEach(key => delete jobs[key]);
+  sentHistory = {};
+  
+  // Aggressive sync
+  saveData('CLEAR_ENDPOINT');
   res.json({ message: 'History cleared' });
 });
 
@@ -591,6 +617,63 @@ app.post('/api/stop/:jobId', (req, res) => {
   }
 });
 
+// --- CONFIGURATION API ---
+
+// Get current config
+app.get('/api/config', (req, res) => {
+  res.json({
+    PHONE_NUMBER_ID: process.env.PHONE_NUMBER_ID || '',
+    WABA_ID: process.env.WABA_ID || '',
+    ACCESS_TOKEN: process.env.ACCESS_TOKEN || '',
+    WEBHOOK_VERIFY_TOKEN: process.env.WEBHOOK_VERIFY_TOKEN || 'my_secret_token'
+  });
+});
+
+// Update config
+app.post('/api/config', (req, res) => {
+  const { PHONE_NUMBER_ID, WABA_ID, ACCESS_TOKEN } = req.body;
+  
+  // Validate required fields
+  if (!PHONE_NUMBER_ID || !WABA_ID || !ACCESS_TOKEN) {
+    return res.status(400).json({ error: 'PHONE_NUMBER_ID, WABA_ID, and ACCESS_TOKEN are all required.' });
+  }
+  
+  // 1. Update in-memory for immediate use
+  process.env.PHONE_NUMBER_ID = PHONE_NUMBER_ID;
+  process.env.WABA_ID = WABA_ID;
+  process.env.ACCESS_TOKEN = ACCESS_TOKEN;
+
+  // 2. Clear template cache to force fresh fetch with new IDs
+  cachedTemplates = null;
+  cachedTemplatesTime = 0;
+
+  // 3. Persist to .env file
+  try {
+    const envPath = path.join(__dirname, '.env');
+    let envContent = fs.readFileSync(envPath, 'utf8');
+
+    const updateEnv = (key, value) => {
+      const regex = new RegExp(`^${key}=.*`, 'm');
+      if (envContent.match(regex)) {
+        envContent = envContent.replace(regex, `${key}=${value}`);
+      } else {
+        envContent += `\n${key}=${value}`;
+      }
+    };
+
+    updateEnv('PHONE_NUMBER_ID', PHONE_NUMBER_ID);
+    updateEnv('WABA_ID', WABA_ID);
+    updateEnv('ACCESS_TOKEN', ACCESS_TOKEN);
+
+    fs.writeFileSync(envPath, envContent.trim() + '\n');
+    console.log('[CONFIG] Credentials updated and saved to .env');
+    res.json({ message: 'Configuration updated and synced!' });
+  } catch (err) {
+    console.error('[CONFIG] Error saving .env:', err);
+    res.status(500).json({ error: 'Failed to persist configuration' });
+  }
+});
+
 // Active Job API (Recovery)
 app.get('/api/active-job', (req, res) => {
   const activeJobId = Object.keys(jobs).find(
@@ -624,16 +707,23 @@ app.get('/webhook', (req, res) => {
 // Webhook for tracking status
 app.post('/webhook', (req, res) => {
   let body = req.body;
-  console.log('Incoming Webhook Body:', JSON.stringify(body, null, 2));
 
-  if (body.object) {
-    if (body.entry && body.entry[0].changes && body.entry[0].changes[0].value.statuses) {
-      let statusInfo = body.entry[0].changes[0].value.statuses[0];
-      let statusString = statusInfo.status; // sent, delivered, read, failed
-      console.log(`[Webhook] Message to ${statusInfo.recipient_id} updated to: ${statusString}`);
-      if (statusInfo.errors) {
-        console.error('Webhook Error Details:', JSON.stringify(statusInfo.errors, null, 2));
+  if (body && body.object) {
+    try {
+      const changes = body.entry?.[0]?.changes?.[0]?.value;
+      if (changes?.statuses) {
+        let statusInfo = changes.statuses[0];
+        let statusString = statusInfo.status; // sent, delivered, read, failed
+        console.log(`[Webhook] Message to ${statusInfo.recipient_id} updated to: ${statusString}`);
+        if (statusInfo.errors) {
+          console.error('Webhook Error Details:', JSON.stringify(statusInfo.errors, null, 2));
+        }
+      } else if (changes?.messages) {
+        // Incoming message received
+        console.log('[Webhook] Incoming message received:', JSON.stringify(changes.messages[0], null, 2));
       }
+    } catch (parseErr) {
+      console.error('[Webhook] Error parsing body:', parseErr.message);
     }
     res.sendStatus(200);
   } else {

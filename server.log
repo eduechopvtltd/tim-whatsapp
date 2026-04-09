@@ -1,0 +1,12 @@
+◇ injecting env (5) from .env // tip: ⌘ custom filepath { path: '/custom/path/.env' }
+Backend server running on http://localhost:3001
+Meta Fetch Error: {
+  error: {
+    message: '(#200) You do not have permission to access this field.',
+    type: 'OAuthException',
+    code: 200,
+    fbtrace_id: 'A0p2iWVANNfmAgTtzkRhMER'
+  }
+}
+Incoming Webhook Verification Request: { mode: 'subscribe', token: 'my_secret_token', challenge: 'test123' }
+WEBHOOK_VERIFIED

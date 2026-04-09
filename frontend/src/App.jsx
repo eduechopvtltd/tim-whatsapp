@@ -16,13 +16,23 @@ function App() {
   
   const [activeTab, setActiveTab] = useState('compose');
   const [historyData, setHistoryData] = useState([]);
+  const API_BASE = 'http://localhost:3001';
   
   const [jobId, setJobId] = useState(null);
   const [jobStatus, setJobStatus] = useState(null);
   const [refreshingTemplates, setRefreshingTemplates] = useState(false);
+  
+  // Configuration State
+  const [config, setConfig] = useState({
+    PHONE_NUMBER_ID: '',
+    WABA_ID: '',
+    ACCESS_TOKEN: '',
+  });
+  const [savingConfig, setSavingConfig] = useState(false);
+  const [configError, setConfigError] = useState(null);
 
   useEffect(() => {
-    fetch('/api/templates')
+    fetch(`${API_BASE}/api/templates`)
       .then(res => res.json())
       .then(data => {
         setTemplates(data);
@@ -31,9 +41,17 @@ function App() {
       .catch(err => console.error("Could not fetch templates", err));
   }, []);
 
+  // Fetch Meta Config on mount
+  useEffect(() => {
+    fetch(`${API_BASE}/api/config`)
+      .then(res => res.json())
+      .then(data => setConfig(data))
+      .catch(err => console.error("Could not fetch config", err));
+  }, []);
+
   // Fetch active job on mount
   useEffect(() => {
-    fetch('/api/active-job')
+    fetch(`${API_BASE}/api/active-job`)
       .then(res => res.json())
       .then(data => {
         if (data.jobId) {
@@ -52,7 +70,7 @@ function App() {
 
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/status/${jobId}`);
+        const res = await fetch(`${API_BASE}/api/status/${jobId}`);
         if (!res.ok) throw new Error('Network error');
         const data = await res.json();
         
@@ -84,7 +102,7 @@ function App() {
     formData.append('file', file);
 
     try {
-      const res = await fetch('/api/upload', {
+      const res = await fetch(`${API_BASE}/api/upload`, {
         method: 'POST',
         body: formData,
       });
@@ -117,7 +135,7 @@ function App() {
   const handleRefreshTemplates = async () => {
     setRefreshingTemplates(true);
     try {
-      const res = await fetch('/api/templates/refresh');
+      const res = await fetch(`${API_BASE}/api/templates/refresh`);
       const data = await res.json();
       setTemplates(data);
       if (data.length > 0 && !selectedTemplate) setSelectedTemplate(data[0].name);
@@ -133,7 +151,7 @@ function App() {
   const handleClearHistory = async () => {
     if (!window.confirm('Are you sure you want to clear all campaign history? This cannot be undone.')) return;
     try {
-      await fetch('http://localhost:3001/api/history/clear', { method: 'POST' });
+      await fetch(`${API_BASE}/api/history/clear`, { method: 'POST' });
       setHistoryData([]);
       setJobStatus(null);
       setJobId(null);
@@ -154,7 +172,7 @@ function App() {
     setJobStatus(null);
 
     try {
-      const res = await fetch('/api/send', {
+      const res = await fetch(`${API_BASE}/api/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -212,7 +230,7 @@ function App() {
   const handlePause = async () => {
     if (!jobId) return;
     try {
-      await fetch(`/api/pause/${jobId}`, { method: 'POST' });
+      await fetch(`${API_BASE}/api/pause/${jobId}`, { method: 'POST' });
     } catch (err) {
       console.error("Pause error", err);
     }
@@ -221,7 +239,7 @@ function App() {
   const handleResume = async () => {
     if (!jobId) return;
     try {
-      await fetch(`/api/resume/${jobId}`, { method: 'POST' });
+      await fetch(`${API_BASE}/api/resume/${jobId}`, { method: 'POST' });
     } catch (err) {
       console.error("Resume error", err);
     }
@@ -230,15 +248,45 @@ function App() {
   const handleStop = async () => {
     if (!jobId) return;
     try {
-      await fetch(`/api/stop/${jobId}`, { method: 'POST' });
+      await fetch(`${API_BASE}/api/stop/${jobId}`, { method: 'POST' });
     } catch (err) {
       console.error("Stop error", err);
     }
   };
 
+  const handleSaveConfig = async (e) => {
+    e.preventDefault();
+    if (jobId && jobStatus?.status === 'Running') {
+      alert('Cannot change settings while a campaign is running!');
+      return;
+    }
+
+    setSavingConfig(true);
+    setConfigError(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config),
+      });
+      if (!res.ok) throw new Error('Failed to update config');
+      
+      const data = await res.json();
+      setStatus(data.message);
+      
+      // Auto-refresh templates with new credentials
+      handleRefreshTemplates();
+      alert('Configuration synced successfully!');
+    } catch (err) {
+      setConfigError(err.message);
+    } finally {
+      setSavingConfig(false);
+    }
+  };
+
   const fetchHistory = async () => {
     try {
-      const res = await fetch('/api/history');
+      const res = await fetch(`${API_BASE}/api/history`);
       const data = await res.json();
       setHistoryData(data);
     } catch(err) {
@@ -288,7 +336,13 @@ function App() {
             className={`flex-1 py-4 font-semibold text-sm transition-colors ${activeTab === 'history' ? 'border-b-2 border-emerald-500 text-emerald-600 bg-white' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}
             onClick={() => { setActiveTab('history'); fetchHistory(); }}
           >
-            🕒 Campaign History
+            🕒 History
+          </button>
+          <button 
+            className={`flex-1 py-4 font-semibold text-sm transition-colors ${activeTab === 'settings' ? 'border-b-2 border-emerald-500 text-emerald-600 bg-white' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}
+            onClick={() => setActiveTab('settings')}
+          >
+            ⚙️ Configuration
           </button>
         </div>
 
@@ -782,6 +836,77 @@ function App() {
             </div>
           )}
 
+          {activeTab === 'settings' && (
+            <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 space-y-6">
+              <div className="border-b border-gray-100 pb-4">
+                <h2 className="text-xl font-bold text-gray-800">Meta API Configuration</h2>
+                <p className="text-sm text-gray-500">Update your credentials and sync with the backend</p>
+              </div>
+
+              <form onSubmit={handleSaveConfig} className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">Phone Number ID</label>
+                    <input 
+                      type="text" 
+                      className="w-full p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all outline-none"
+                      value={config.PHONE_NUMBER_ID}
+                      onChange={(e) => setConfig({...config, PHONE_NUMBER_ID: e.target.value})}
+                      placeholder="e.g. 1069..."
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">WABA ID</label>
+                    <input 
+                      type="text" 
+                      className="w-full p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all outline-none"
+                      value={config.WABA_ID}
+                      onChange={(e) => setConfig({...config, WABA_ID: e.target.value})}
+                      placeholder="e.g. 1971..."
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">Permanent Access Token</label>
+                  <textarea 
+                    className="w-full p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all outline-none font-mono text-xs"
+                    rows="4"
+                    value={config.ACCESS_TOKEN}
+                    onChange={(e) => setConfig({...config, ACCESS_TOKEN: e.target.value})}
+                    placeholder="EAAN8ltad..."
+                    required
+                  />
+                </div>
+
+                {configError && (
+                  <div className="p-3 bg-red-50 text-red-600 rounded-lg text-sm border border-red-100 italic">
+                    ⚠️ {configError}
+                  </div>
+                )}
+
+                <div className="pt-4 flex items-center justify-between">
+                  <div className="text-xs text-gray-400">
+                    * Changes will be saved to your local .env file.
+                  </div>
+                  <button 
+                    type="submit"
+                    disabled={savingConfig}
+                    className={`px-8 py-3 rounded-lg font-bold text-white transition-all transform active:scale-95 shadow-md ${savingConfig ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700'}`}
+                  >
+                    {savingConfig ? (
+                      <span className="flex items-center gap-2">
+                        <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                        Connecting...
+                      </span>
+                    ) : '🔗 Connect & Sync Backend'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
         </div>
       </div>
     </div>
