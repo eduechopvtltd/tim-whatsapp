@@ -396,8 +396,7 @@ app.post('/api/send', authenticateToken, async (req, res) => {
 
       let wamid = null;
       let msgStatus = 'Pending';
-      let payload = { messaging_product: "whatsapp", recipient_type: "individual", to: '+' + cleanPhone };
-
+      let payload = { messaging_product: "whatsapp", recipient_type: "individual", to: cleanPhone };
       try {
         if (messageType === 'text') {
           let text = customMessage || '';
@@ -406,8 +405,58 @@ app.post('/api/send', authenticateToken, async (req, res) => {
           payload.text = { body: text };
         } else {
           payload.type = "template";
-          payload.template = { name: template.name, language: { code: template.language || "en_US" }, components: [] };
-          // ... (Component logic remains same as original)
+          payload.template = { 
+            name: template.name, 
+            language: { code: template.language || "en_US" }, 
+            components: [] 
+          };
+
+          const components = [];
+          
+          // 1. Header Component
+          if (template.componentsData.header.type) {
+            const headerComp = { type: "header", parameters: [] };
+            if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.componentsData.header.type)) {
+              const mediaId = mapping.header_media_url || null;
+              if (mediaId) {
+                headerComp.parameters.push({
+                  type: template.componentsData.header.type.toLowerCase(),
+                  [template.componentsData.header.type.toLowerCase()]: { id: mediaId }
+                });
+                components.push(headerComp);
+              }
+            } else if (template.componentsData.header.variables.length > 0) {
+              template.componentsData.header.variables.forEach(v => {
+                const csvCol = mapping[v];
+                headerComp.parameters.push({ type: "text", text: String(contact[csvCol] || '') });
+              });
+              components.push(headerComp);
+            }
+          }
+
+          // 2. Body Component
+          if (template.componentsData.body.variables.length > 0) {
+            const bodyComp = { type: "body", parameters: [] };
+            template.componentsData.body.variables.forEach(v => {
+              const csvCol = mapping[v];
+              bodyComp.parameters.push({ type: "text", text: String(contact[csvCol] || '') });
+            });
+            components.push(bodyComp);
+          }
+
+          // 3. Button Components
+          template.componentsData.buttons.forEach((btn, idx) => {
+            if (btn.type === 'URL' && btn.variables.length > 0) {
+              const btnComp = { type: "button", sub_type: "url", index: idx, parameters: [] };
+              btn.variables.forEach(v => {
+                const csvCol = mapping[`btn_${idx}_${v}`] || mapping['url_suffix'] || mapping[v];
+                btnComp.parameters.push({ type: "text", text: String(contact[csvCol] || '') });
+              });
+              components.push(btnComp);
+            }
+          });
+
+          payload.template.components = components;
         }
 
         const response = await axios.post(`https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`, payload, {
@@ -417,6 +466,10 @@ app.post('/api/send', authenticateToken, async (req, res) => {
         wamid = response.data.messages?.[0]?.id;
       } catch (err) {
         msgStatus = `Failed: ${err.message}`;
+        if (err.response?.data?.error) {
+           console.error('[META ERROR]', JSON.stringify(err.response.data.error, null, 2));
+           msgStatus = `Failed: ${err.response.data.error.message}`;
+        }
       }
 
       if (wamid) {
