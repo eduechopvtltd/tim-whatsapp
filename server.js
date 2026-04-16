@@ -39,7 +39,6 @@ const connectDB = async () => {
         }
         await mongoose.connect(uri);
         console.log('[DB] ✅ Connected to MongoDB Atlas');
-        await loadData();
     } catch (err) {
         console.error('[DB] ❌ Connection error:', err.message);
     }
@@ -80,7 +79,10 @@ const activeJobsFile = path.join(__dirname, 'active_jobs.json');
 const wamidMapFile = path.join(__dirname, 'wamid_map.json');
 const chatsFile = path.join(__dirname, 'chats.json');
 
-let chats = {}; // { phone: [ { from, text, timestamp, type, status } ] }
+// Global In-memory stores (Scoped to userId)
+let jobs = {};            // { userId: { jobId: { status, results, ... } } }
+let wamidToJob = {};      // { wamid: { jobId, phone } }
+let sentHistory = {};     // { phone: { sentAt, jobId } } (Shared cache)
 
 // --- AUTHENTICATION MIDDLEWARE ---
 const authenticateToken = (req, res, next) => {
@@ -140,73 +142,9 @@ app.post('/auth/login', async (req, res) => {
     res.status(500).json({ error: 'Server error during login' });
   }
 });
-    const dbCampaigns = await Campaign.find({}).sort({ id: 1 });
-    campaignHistory = dbCampaigns.map(c => ({
-        id: c.id,
-        name: c.name,
-        status: c.status,
-        totalContacts: c.totalContacts,
-        sent: c.sent,
-        failed: c.failed,
-        timestamp: c.timestamp
-    }));
-
-    // 2. Load Global State Objects
-    const states = await GlobalState.find({});
-    states.forEach(state => {
-        if (state.key === 'sentHistory') sentHistory = state.data;
-        if (state.key === 'mediaCache') mediaCache = state.data;
-        if (state.key === 'wamidToJob') wamidToJob = state.data;
-        if (state.key === 'jobs') {
-            Object.keys(state.data).forEach(id => {
-                if (state.data[id].status === 'Running') state.data[id].status = 'Paused (Server Restart)';
-                jobs[id] = state.data[id];
-            });
-        }
-    });
-
-    // 3. Load Recent Chats into Memory Cache (optional, for speed)
-    const dbChats = await Chat.find({}).limit(100); 
-    dbChats.forEach(c => { chats[c.phone] = c.messages; });
-
-    console.log(`[DB] State Loaded: ${campaignHistory.length} Campaigns, ${Object.keys(jobs).length} Jobs.`);
-  } catch (err) {
-    console.error('[DB] Failed to load data:', err.message);
-  }
-};
-
-const saveData = async (source = 'unknown') => {
-  console.log(`[DB] Syncing state to Cloud (Source: ${source}).. `);
-  try {
-    // 1. Save Campaigns (Batch update)
-    for (const campaign of campaignHistory) {
-        await Campaign.findOneAndUpdate({ id: campaign.id }, campaign, { upsert: true });
-    }
-
-    // 2. Save Global States
-    await GlobalState.findOneAndUpdate({ key: 'sentHistory' }, { data: sentHistory }, { upsert: true });
-    await GlobalState.findOneAndUpdate({ key: 'mediaCache' }, { data: mediaCache }, { upsert: true });
-    await GlobalState.findOneAndUpdate({ key: 'wamidToJob' }, { data: wamidToJob }, { upsert: true });
-    await GlobalState.findOneAndUpdate({ key: 'jobs' }, { data: jobs }, { upsert: true });
-
-    console.log(`[DB] ✅ Cloud Sync Success!`);
-  } catch (err) {
-    console.error(`[DB] ❌ Cloud Sync Failed: ${err.message}`);
-  }
-};
-
 // Helpers
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-let saveTimeout = null;
-const requestSave = (source = 'auto') => {
-  if (saveTimeout) return;
-  saveTimeout = setTimeout(async () => {
-    await saveData(source);
-    saveTimeout = null;
-  }, 5000); // Max once every 5 seconds during heavy tasks
-};
 
 const mapMetaError = (err) => {
   if (!err) return 'Unknown Error';
