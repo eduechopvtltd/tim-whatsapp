@@ -7,3 +7,6 @@ frontend/dist/
 campaign_history.json
 media_cache.json
 active_jobs.json
+chats.json
+wamid_map.json
+webhook.log
