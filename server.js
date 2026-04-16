@@ -359,23 +359,6 @@ app.post('/api/upload-csv', upload.single('csv'), async (req, res) => {
     });
 });
 
-// Send message API
-app.post('/api/send', async (req, res) => {
-  const { contacts, templateName, mapping, messageType, customMessage, allowDuplicates } = req.body;
-
-  if (!contacts || !mapping) {
-    return res.status(400).json({ error: 'Missing required fields' });
-  }
-
-  let template = null;
-  if (messageType !== 'text') {
-    if (!templateName) {
-      return res.status(400).json({ error: 'Template name is required for template messages' });
-    }
-    const templates = await getMetaTemplates();
-    template = templates.find(t => t.name === templateName);
-
-    if (!template) {
 // --- CAMPAIGN EXECUTION ENGINE (Multi-Tenant) ---
 
 app.post('/api/send', authenticateToken, async (req, res) => {
@@ -504,7 +487,7 @@ app.post('/api/history/clear', async (req, res) => {
   sentHistory = {};
 
   // Aggressive sync
-  await saveData('CLEAR_ENDPOINT');
+  
   res.json({ message: 'History cleared' });
 });
 
@@ -724,7 +707,7 @@ app.post('/webhook', async (req, res) => {
                 result.status = `Failed: ${err.message}`;
               }
               
-              await saveData('WEBHOOK_STATUS_UPDATE');
+              
               console.log(`[Webhook] Updated Job ${jobId} status for ${phone}`);
             }
           }
@@ -786,7 +769,7 @@ app.post('/webhook', async (req, res) => {
                 },
                 { upsert: true }
             );
-            await saveData('WEBHOOK_INCOMING_MSG');
+            
         } catch (dbErr) {
             console.error('[DB ERROR] Failed to save incoming message:', dbErr.message);
         }
@@ -822,9 +805,15 @@ app.get('/api/chats/:phone', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/reply', async (req, res) => {
+app.post('/api/reply', authenticateToken, async (req, res) => {
   const { phone, text } = req.body;
+  const userId = req.user.id;
+  const user = await User.findById(userId);
+
   if (!phone || !text) return res.status(400).json({ error: 'Phone and text are required' });
+  if (!user || !user.config.token || !user.config.phoneId) {
+     return res.status(400).json({ error: 'WhatsApp Credentials not configured' });
+  }
   
   try {
     const payload = {
@@ -837,38 +826,30 @@ app.post('/api/reply', async (req, res) => {
     
     console.log(`[REPLY] Sending to ${phone}: ${text}`);
     
-    await axios.post(`https://graph.facebook.com/v21.0/${process.env.PHONE_NUMBER_ID}/messages`, payload, {
-      headers: { 'Authorization': `Bearer ${process.env.ACCESS_TOKEN}`, 'Content-Type': 'application/json' }
+    await axios.post(`https://graph.facebook.com/v21.0/${user.config.phoneId}/messages`, payload, {
+      headers: { 'Authorization': `Bearer ${user.config.token}`, 'Content-Type': 'application/json' }
     });
     
     const newMsg = {
       id: `internal_${Date.now()}`,
       from: 'me',
-      name: (chats[phone] && chats[phone].find(m => m.from === 'customer')?.name) || phone, 
+      name: phone, 
       text: text,
       timestamp: Date.now(),
       type: 'text'
     };
 
-    if (!chats[phone]) chats[phone] = [];
-    chats[phone].push(newMsg);
+    await Chat.findOneAndUpdate(
+        { userId: userId, phone: phone },
+        { $push: { messages: newMsg } },
+        { upsert: true }
+    );
     
-    // Persist to Cloud
-    try {
-        await Chat.findOneAndUpdate(
-            { phone },
-            { $push: { messages: newMsg } },
-            { upsert: true }
-        );
-        await saveData('USER_REPLY');
-    } catch (err) {
-        console.error('[DB ERROR] User reply failed:', err.message);
-    }
     res.json({ success: true });
   } catch (err) {
-    const metaError = err.response?.data?.error?.message || err.message;
-    console.error('[REPLY] Failed:', metaError);
-    res.status(err.response?.status || 500).json({ error: metaError });
+    const errorMsg = err.response?.data?.error?.message || err.message;
+    console.error('[REPLY ERROR]', errorMsg);
+    res.status(500).json({ error: errorMsg });
   }
 });
 
@@ -877,14 +858,15 @@ app.post('/api/reply', async (req, res) => {
 // We only remove jobs that are Completed/Stopped and older than 12 hours
 setInterval(async () => {
   const now = Date.now();
-  Object.keys(jobs).forEach(id => {
-    const job = jobs[id];
-    if ((job.status === 'Completed' || job.status === 'Stopped') && (now - job.createdAt > 12 * 60 * 60 * 1000)) {
-      console.log(`[CLEANUP] Removing old job ${id} from memory`);
-      delete jobs[id];
-    }
+  Object.keys(jobs).forEach(uId => {
+    Object.keys(jobs[uId]).forEach(jId => {
+      const job = jobs[uId][jId];
+      if ((job.status === 'Completed' || job.status === 'Stopped') && (now - job.createdAt > 12 * 60 * 60 * 1000)) {
+        console.log(`[CLEANUP] Removing old job ${jId} from memory for user ${uId}`);
+        delete jobs[uId][jId];
+      }
+    });
   });
-  await saveData(); // Sync with disk
 }, 3600000); // Every 1 hour
 
 // --- HOOKDECK AUTOMATIC SYNC ---
