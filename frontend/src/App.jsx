@@ -228,6 +228,8 @@ export default function App() {
   const selectedTpl = useMemo(() => templates.find(t => t.name === selectedTemplate) || null, [selectedTemplate, templates]);
   const bodyVariables = useMemo(() => selectedTpl?.componentsData?.body?.variables || [], [selectedTpl]);
   const headerInfo = useMemo(() => selectedTpl?.componentsData?.header || null, [selectedTpl]);
+  const footerVariables = useMemo(() => selectedTpl?.componentsData?.footer?.variables || [], [selectedTpl]);
+  const buttons = useMemo(() => selectedTpl?.componentsData?.buttons || [], [selectedTpl]);
 
   const filteredResults = useMemo(() => {
     if (!jobStatus?.results) return [];
@@ -625,19 +627,81 @@ export default function App() {
                                     {uploadedMediaId && <p className="text-[9px] text-emerald-500/60 ml-1 font-mono">Meta ID: {uploadedMediaId}</p>}
                                   </div>
                                 )}
-                                {headerInfo?.type === 'TEXT' && headerInfo.variables?.length > 0 && csvHeaders.length > 0 && (
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    {headerInfo.variables.map((v, i) => (<FieldSelect key={i} label={`Header: ${v}`} value={mapping[`header_${v}`] || ''} onChange={val => setMapping({...mapping, [`header_${v}`]: val})} options={csvHeaders} />))}
-                                  </div>
-                                )}
-                                {bodyVariables.length > 0 && csvHeaders.length > 0 && (
-                                  <div className="space-y-3">
-                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Body Variables</p>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                       {bodyVariables.map((varName, i) => (<FieldSelect key={i} label={varName} value={mapping[`body_${varName}`] || mapping[varName] || ''} onChange={v => setMapping({...mapping, [`body_${varName}`]: v, [varName]: v})} options={csvHeaders} />))}
-                                    </div>
-                                  </div>
-                                )}
+                                 {headerInfo?.type === 'TEXT' && headerInfo.variables?.length > 0 && csvHeaders.length > 0 && (
+                                   <div className="space-y-3">
+                                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Header Variables</p>
+                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                       {headerInfo.variables.map((v, i) => (
+                                          <FieldSelect 
+                                            key={i} 
+                                            label={headerInfo.portalNames[i]} 
+                                            value={mapping[v] || mapping[`Header Var ${v}`] || ''} 
+                                            onChange={val => setMapping({...mapping, [v]: val, [`Header Var ${v}`]: val})} 
+                                            options={csvHeaders} 
+                                          />
+                                       ))}
+                                     </div>
+                                   </div>
+                                 )}
+
+                                 {/* BODY VARIABLES */}
+                                 {bodyVariables.length > 0 && csvHeaders.length > 0 && (
+                                   <div className="space-y-3">
+                                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Body Variables</p>
+                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        {bodyVariables.map((v, i) => (
+                                           <FieldSelect 
+                                             key={i} 
+                                             label={selectedTpl?.componentsData?.body?.portalNames[i] || `Body Var ${v}`} 
+                                             value={mapping[v] || mapping[`Body Var ${v}`] || ''} 
+                                             onChange={val => setMapping({...mapping, [v]: val, [`Body Var ${v}`]: val})} 
+                                             options={csvHeaders} 
+                                           />
+                                        ))}
+                                     </div>
+                                   </div>
+                                 )}
+
+                                 {/* FOOTER VARIABLES */}
+                                 {footerVariables.length > 0 && csvHeaders.length > 0 && (
+                                   <div className="space-y-3">
+                                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Footer Variables</p>
+                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                       {footerVariables.map((v, i) => (
+                                          <FieldSelect 
+                                            key={i} 
+                                            label={selectedTpl?.componentsData?.footer?.portalNames[i] || `Footer Var ${v}`} 
+                                            value={mapping[v] || mapping[`Footer Var ${v}`] || ''} 
+                                            onChange={val => setMapping({...mapping, [v]: val, [`Footer Var ${v}`]: val})} 
+                                            options={csvHeaders} 
+                                          />
+                                       ))}
+                                     </div>
+                                   </div>
+                                 )}
+
+                                 {/* BUTTON VARIABLES */}
+                                 {buttons.filter(b => b.variables?.length > 0).length > 0 && csvHeaders.length > 0 && (
+                                   <div className="space-y-4">
+                                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Button Parameters</p>
+                                     {buttons.map((btn, bIdx) => btn.variables?.length > 0 && (
+                                        <div key={bIdx} className="p-3 rounded-xl bg-white/[0.01] border border-border-dim space-y-3">
+                                           <p className="text-[9px] font-bold text-slate-600 uppercase tracking-tighter italic">Button {bIdx + 1}: {btn.text}</p>
+                                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                              {btn.variables.map((v, vIdx) => (
+                                                 <FieldSelect 
+                                                    key={vIdx} 
+                                                    label={btn.portalNames[vIdx]} 
+                                                    value={mapping[`btn_${bIdx}_${v}`] || mapping[`Btn ${bIdx} Var ${v}`] || ''} 
+                                                    onChange={val => setMapping({...mapping, [`btn_${bIdx}_${v}`]: val, [`Btn ${bIdx} Var ${v}`]: val})} 
+                                                    options={csvHeaders} 
+                                                 />
+                                              ))}
+                                           </div>
+                                        </div>
+                                     ))}
+                                   </div>
+                                 )}
                              </div>
                           ) : (
                              <div className="space-y-2">

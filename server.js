@@ -178,58 +178,52 @@ const getMetaTemplatesForUser = async (wabaId, accessToken) => {
       };
 
       t.components.forEach(comp => {
-        const text = comp.text || '';
-        const matches = text.match(/{{([a-zA-Z0-9_]+)}}/g) || [];
-        const vars = matches.map(m => m.replace(/[{}]/g, ''));
-
         if (comp.type === 'HEADER') {
           componentsData.header.type = comp.format;
-          if (comp.format === 'IMAGE' || comp.format === 'VIDEO' || comp.format === 'DOCUMENT') {
-            if (comp.example && comp.example.header_handle && comp.example.header_handle.length > 0) {
+          if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(comp.format)) {
+            if (comp.example?.header_handle?.[0]) {
               componentsData.header.imageUrl = comp.example.header_handle[0];
             }
           }
+          const vars = comp.text?.match(/{{([0-9]+)}}/g)?.map(m => m.replace(/[{}]/g, '')) || [];
           vars.forEach(v => {
-            if (!componentsData.header.portalNames.includes(v)) {
+            if (!componentsData.header.variables.includes(v)) {
               componentsData.header.variables.push(v);
-              componentsData.header.portalNames.push(v);
+              componentsData.header.portalNames.push(`Header Var ${v}`);
             }
           });
         }
 
         if (comp.type === 'BODY') {
+          const vars = comp.text?.match(/{{([0-9]+)}}/g)?.map(m => m.replace(/[{}]/g, '')) || [];
           vars.forEach(v => {
-            if (!componentsData.body.portalNames.includes(v)) {
+            if (!componentsData.body.variables.includes(v)) {
               componentsData.body.variables.push(v);
-              componentsData.body.portalNames.push(v);
+              componentsData.body.portalNames.push(`Body Var ${v}`);
             }
           });
         }
 
         if (comp.type === 'FOOTER') {
+          const vars = comp.text?.match(/{{([0-9]+)}}/g)?.map(m => m.replace(/[{}]/g, '')) || [];
           vars.forEach(v => {
-            if (!componentsData.footer.portalNames.includes(v)) {
+            if (!componentsData.footer.variables.includes(v)) {
               componentsData.footer.variables.push(v);
-              componentsData.footer.portalNames.push(v);
+              componentsData.footer.portalNames.push(`Footer Var ${v}`);
             }
           });
         }
 
         if (comp.type === 'BUTTONS') {
           comp.buttons.forEach((btn, idx) => {
-            const btnData = {
-              type: btn.type,
-              text: btn.text,
-              index: idx,
-              variables: [],
-              portalNames: []
-            };
-            if (btn.type === 'URL' && btn.url && btn.url.includes('{{1}}')) {
-              btnData.variables.push('url_suffix');
-              btnData.portalNames.push('url_suffix');
-            }
-            if (btn.type === 'FLOW') {
-              btnData.flowId = btn.flow_id;
+            const btnData = { type: btn.type, text: btn.text, index: idx, variables: [], portalNames: [] };
+            if (btn.type === 'URL' && btn.url) {
+              const matches = btn.url.match(/{{([0-9]+)}}/g) || [];
+              matches.forEach(m => {
+                const v = m.replace(/[{}]/g, '');
+                btnData.variables.push(v);
+                btnData.portalNames.push(`Btn ${idx} Var ${v}`);
+              });
             }
             componentsData.buttons.push(btnData);
           });
@@ -414,44 +408,46 @@ app.post('/api/send', authenticateToken, async (req, res) => {
           
           // 1. Header Component
           if (template.componentsData.header.type) {
-            const headerComp = { type: "header", parameters: [] };
-            if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.componentsData.header.type)) {
-              const mediaId = mapping.header_media_url || null;
+            const hType = template.componentsData.header.type;
+            if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(hType)) {
+              const mediaId = mapping.header_media_url;
               if (mediaId) {
-                headerComp.parameters.push({
-                  type: template.componentsData.header.type.toLowerCase(),
-                  [template.componentsData.header.type.toLowerCase()]: { id: mediaId }
+                components.push({
+                  type: "header",
+                  parameters: [{ type: hType.toLowerCase(), [hType.toLowerCase()]: { id: mediaId } }]
                 });
-                components.push(headerComp);
               }
             } else if (template.componentsData.header.variables.length > 0) {
-              template.componentsData.header.variables.forEach(v => {
-                const csvCol = mapping[v];
-                headerComp.parameters.push({ type: "text", text: String(contact[csvCol] || '') });
-              });
-              components.push(headerComp);
+              const params = template.componentsData.header.variables.map(v => ({
+                type: "text", text: String(contact[mapping[v] || mapping[`Header Var ${v}`]] || '')
+              }));
+              components.push({ type: "header", parameters: params });
             }
           }
 
           // 2. Body Component
           if (template.componentsData.body.variables.length > 0) {
-            const bodyComp = { type: "body", parameters: [] };
-            template.componentsData.body.variables.forEach(v => {
-              const csvCol = mapping[v];
-              bodyComp.parameters.push({ type: "text", text: String(contact[csvCol] || '') });
-            });
-            components.push(bodyComp);
+            const params = template.componentsData.body.variables.map(v => ({
+              type: "text", text: String(contact[mapping[v] || mapping[`Body Var ${v}`]] || '')
+            }));
+            components.push({ type: "body", parameters: params });
           }
 
-          // 3. Button Components
+          // 3. Footer Component
+          if (template.componentsData.footer.variables.length > 0) {
+            const params = template.componentsData.footer.variables.map(v => ({
+              type: "text", text: String(contact[mapping[v] || mapping[`Footer Var ${v}`]] || '')
+            }));
+            components.push({ type: "footer", parameters: params });
+          }
+
+          // 4. Button Components
           template.componentsData.buttons.forEach((btn, idx) => {
             if (btn.type === 'URL' && btn.variables.length > 0) {
-              const btnComp = { type: "button", sub_type: "url", index: idx, parameters: [] };
-              btn.variables.forEach(v => {
-                const csvCol = mapping[`btn_${idx}_${v}`] || mapping['url_suffix'] || mapping[v];
-                btnComp.parameters.push({ type: "text", text: String(contact[csvCol] || '') });
-              });
-              components.push(btnComp);
+              const params = btn.variables.map(v => ({
+                type: "text", text: String(contact[mapping[`btn_${idx}_${v}`] || mapping[`Btn ${idx} Var ${v}`] || mapping['url_suffix']] || '')
+              }));
+              components.push({ type: "button", sub_type: "url", index: idx, parameters: params });
             }
           });
 
