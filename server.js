@@ -13,8 +13,7 @@ const { spawn } = require('child_process');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { User, Chat, Campaign, GlobalState } = require('./db/models');
-
+const { User, Chat, Campaign, GlobalState, WamidMapping } = require('./db/models');
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_for_dev_only';
 
 const app = express();
@@ -475,6 +474,14 @@ app.post('/api/send', authenticateToken, async (req, res) => {
       if (wamid) {
         wamidToJob[wamid] = { jobId, phone: cleanPhone, userId };
         sentHistory[cleanPhone] = { sentAt: Date.now(), jobId };
+        
+        // PERSIST WAMID MAPPING (for status survival after restart)
+        new WamidMapping({
+          wamid,
+          userId,
+          jobId,
+          phone: cleanPhone
+        }).save().catch(err => console.error('[DB] WamidMapping Save Error:', err.message));
       }
 
       userJobs[jobId].results.push({
@@ -745,8 +752,25 @@ app.post('/webhook', async (req, res) => {
         console.log(`[Webhook] Status Update: ${recipient} -> ${statusString.toUpperCase()} (ID: ${wamid})`);
 
         // UPDATE JOB MEMORY
-        if (wamidToJob[wamid]) {
-          const { jobId, phone, userId } = wamidToJob[wamid];
+        let mapping = wamidToJob[wamid];
+        
+        // Fallback to Database if not in memory (e.g. after restart)
+        if (!mapping) {
+          console.log(`[Webhook] ${wamid} not in memory, looking up in DB...`);
+          const dbMapping = await WamidMapping.findOne({ wamid });
+          if (dbMapping) {
+            mapping = { 
+              jobId: dbMapping.jobId, 
+              phone: dbMapping.phone, 
+              userId: dbMapping.userId 
+            };
+            // Restore to memory for speed
+            wamidToJob[wamid] = mapping;
+          }
+        }
+
+        if (mapping) {
+          const { jobId, phone, userId } = mapping;
           const userJobs = jobs[userId] || {};
           
           if (userJobs[jobId]) {

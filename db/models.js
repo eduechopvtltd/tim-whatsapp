@@ -66,9 +66,21 @@ const GlobalStateSchema = new mongoose.Schema({
 
 GlobalStateSchema.index({ userId: 1, key: 1 }, { unique: true });
 
+// WamidMapping: Maps Meta Message IDs to campaigns for persistent status tracking
+const WamidMappingSchema = new mongoose.Schema({
+    wamid: { type: String, required: true, unique: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    jobId: { type: String, required: true },
+    phone: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now, expires: '48h' } // Auto-delete after 48 hours
+});
+
+WamidMappingSchema.index({ wamid: 1 });
+
 module.exports = {
     User: mongoose.model('User', UserSchema),
     Chat: mongoose.model('Chat', ChatSchema),
     Campaign: mongoose.model('Campaign', CampaignSchema),
-    GlobalState: mongoose.model('GlobalState', GlobalStateSchema)
+    GlobalState: mongoose.model('GlobalState', GlobalStateSchema),
+    WamidMapping: mongoose.model('WamidMapping', WamidMappingSchema)
 };
