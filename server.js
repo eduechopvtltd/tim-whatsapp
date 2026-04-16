@@ -1202,6 +1202,11 @@ function startWebhookTunnel() {
     const sourceName = process.env.HOOKDECK_SOURCE_NAME;
     const subdomain = process.env.LT_SUBDOMAIN;
     
+    if (process.env.RENDER) {
+        console.log(`[WEBHOOK TUNNEL] Running on Render Cloud. Skipping LocalTunnel.`);
+        return;
+    }
+    
     console.log(`[WEBHOOK TUNNEL] Starting LocalTunnel...`);
     
     // Command: [path-to-lt] --port 3001 --subdomain [name]
@@ -1247,14 +1252,24 @@ process.on('exit', () => { if (webhookProcess) webhookProcess.kill(); });
 process.on('SIGINT', () => { if (webhookProcess) webhookProcess.kill(); process.exit(); });
 process.on('SIGTERM', () => { if (webhookProcess) webhookProcess.kill(); process.exit(); });
 
-app.listen(port, '127.0.0.1', () => {
+app.listen(port, () => {
     console.log(`Backend server running on http://127.0.0.1:${port}`);
     
     // Connect to MongoDB Atlas
     connectDB();
 
-    // Start Webhook Tunnel
-    startWebhookTunnel();
+    // Start Webhook Tunnel (Only if NOT on Render)
+    if (process.env.RENDER) {
+        const renderUrl = process.env.RENDER_EXTERNAL_URL;
+        console.log(`[BRIDGE] Detected Render Cloud environment.`);
+        if (renderUrl) {
+            updateHookdeckDestination(renderUrl);
+        } else {
+            console.warn('[BRIDGE] RENDER_EXTERNAL_URL not found. Please ensure it is set in environment.');
+        }
+    } else {
+        startWebhookTunnel();
+    }
     
     // Trigger Hookdeck sync (wait a bit to ensure tunnel is active if needed)
     setTimeout(triggerHookdeckSync, 5000);
