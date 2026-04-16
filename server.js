@@ -186,14 +186,14 @@ const getMetaTemplatesForUser = async (wabaId, accessToken) => {
             }
           }
           const vars = comp.text?.match(/{{([a-zA-Z0-9_]+)}}/g)?.map(m => m.replace(/[{}]/g, '')) || [];
-          // Sort numerically if they are numbers
           const uniqueVars = [...new Set(vars)].sort((a, b) => {
             if (!isNaN(a) && !isNaN(b)) return parseInt(a) - parseInt(b);
             return a.localeCompare(b);
           });
           uniqueVars.forEach(v => {
             componentsData.header.variables.push(v);
-            componentsData.header.portalNames.push(`Header Var ${v}`);
+            const label = isNaN(v) ? `Variable: ${v}` : `Header Var ${v}`;
+            componentsData.header.portalNames.push(label);
           });
         }
 
@@ -205,7 +205,8 @@ const getMetaTemplatesForUser = async (wabaId, accessToken) => {
           });
           uniqueVars.forEach(v => {
             componentsData.body.variables.push(v);
-            componentsData.body.portalNames.push(`Body Var ${v}`);
+            const label = isNaN(v) ? `Variable: ${v}` : `Body Var ${v}`;
+            componentsData.body.portalNames.push(label);
           });
         }
 
@@ -420,9 +421,7 @@ app.post('/api/send', authenticateToken, async (req, res) => {
           if (template.componentsData.header.type) {
             const hType = template.componentsData.header.type;
             if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(hType)) {
-              // Get mapping for header media
               let mediaValue = mapping.header_media_url;
-              // Also check if mapping[header_media_url] points to a column (e.g. from the CSV)
               const csvColValue = contact[mapping.header_media_url];
               const finalMediaVal = csvColValue || mediaValue;
 
@@ -437,35 +436,43 @@ app.post('/api/send', authenticateToken, async (req, res) => {
                 });
               }
             } else if (template.componentsData.header.variables.length > 0) {
-              const params = template.componentsData.header.variables.map(v => ({
-                type: "text", text: String(contact[mapping[v] || mapping[`Header Var ${v}`]] || '')
-              }));
+              const params = template.componentsData.header.variables.map(v => {
+                const param = { type: "text", text: String(contact[mapping[v] || mapping[`Header Var ${v}`] || mapping[`Variable: ${v}`]] || '') };
+                if (isNaN(v)) param.parameter_name = v;
+                return param;
+              });
               components.push({ type: "header", parameters: params });
             }
           }
 
           // 2. Body Component
           if (template.componentsData.body.variables.length > 0) {
-            const params = template.componentsData.body.variables.map(v => ({
-              type: "text", text: String(contact[mapping[v] || mapping[`Body Var ${v}`]] || '')
-            }));
+            const params = template.componentsData.body.variables.map(v => {
+              const param = { type: "text", text: String(contact[mapping[v] || mapping[`Body Var ${v}`] || mapping[`Variable: ${v}`]] || '') };
+              if (isNaN(v)) param.parameter_name = v;
+              return param;
+            });
             components.push({ type: "body", parameters: params });
           }
 
           // 3. Footer Component
           if (template.componentsData.footer.variables.length > 0) {
-            const params = template.componentsData.footer.variables.map(v => ({
-              type: "text", text: String(contact[mapping[v] || mapping[`Footer Var ${v}`]] || '')
-            }));
+            const params = template.componentsData.footer.variables.map(v => {
+              const param = { type: "text", text: String(contact[mapping[v] || mapping[`Footer Var ${v}`] || mapping[`Variable: ${v}`]] || '') };
+              if (isNaN(v)) param.parameter_name = v;
+              return param;
+            });
             components.push({ type: "footer", parameters: params });
           }
 
           // 4. Button Components
           template.componentsData.buttons.forEach((btn, idx) => {
             if (btn.type === 'URL' && btn.variables.length > 0) {
-              const params = btn.variables.map(v => ({
-                type: "text", text: String(contact[mapping[`btn_${idx}_${v}`] || mapping[`Btn ${idx} Var ${v}`] || mapping['url_suffix']] || '')
-              }));
+              const params = btn.variables.map(v => {
+                const param = { type: "text", text: String(contact[mapping[`btn_${idx}_${v}`] || mapping[`Btn ${idx} Var ${v}`] || mapping[`Variable: ${v}`] || mapping['url_suffix']] || '') };
+                if (isNaN(v)) param.parameter_name = v;
+                return param;
+              });
               components.push({ type: "button", sub_type: "url", index: idx, parameters: params });
             }
           });
