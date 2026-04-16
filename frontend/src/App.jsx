@@ -90,6 +90,7 @@ export default function App() {
   const [revealCredentials, setRevealCredentials] = useState(false);
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [uploadedMediaId, setUploadedMediaId] = useState(null);
+  const [localMediaUrl, setLocalMediaUrl] = useState(null);
   const [chats, setChats] = useState([]);
   const [activeChatPhone, setActiveChatPhone] = useState(null);
   const [activeChatHistory, setActiveChatHistory] = useState([]);
@@ -346,6 +347,10 @@ export default function App() {
     setIsUploadingMedia(true); setStatus('Uploading media to Meta...');
     const formData = new FormData();
     formData.append('media', mediaFile);
+    // Local preview for UI
+    const localUrl = URL.createObjectURL(mediaFile);
+    setLocalMediaUrl(localUrl);
+    
     try {
       const resp = await fetchWithAuth(`${API_BASE}/api/upload-media`, { method: 'POST', body: formData });
       const data = await resp.json();
@@ -353,7 +358,7 @@ export default function App() {
       setUploadedMediaId(data.media_id);
       setMapping(prev => ({ ...prev, header_media_url: data.media_id }));
       setStatus('Media uploaded successfully!');
-    } catch (err) { setStatus(`Media upload failed: ${err.message}`); }
+    } catch (err) { setStatus(`Media upload failed: ${err.message}`); setLocalMediaUrl(null); }
     finally { setIsUploadingMedia(false); }
   };
 
@@ -783,6 +788,7 @@ export default function App() {
                            mapping={mapping} 
                            csvHeaders={csvHeaders} 
                            uploadedMediaId={uploadedMediaId}
+                           localMediaUrl={localMediaUrl}
                          />
                          {selectedTpl && (
                            <div className="p-4 rounded-2xl bg-white/[0.01] border border-border-dim">
@@ -1151,7 +1157,7 @@ export default function App() {
   );
 }
 
-function TemplatePreview({ template, mapping, csvHeaders, uploadedMediaId }) {
+function TemplatePreview({ template, mapping, csvHeaders, uploadedMediaId, localMediaUrl }) {
   if (!template) return null;
 
   const header = template.componentsData?.header;
@@ -1160,7 +1166,7 @@ function TemplatePreview({ template, mapping, csvHeaders, uploadedMediaId }) {
   const buttons = template.componentsData?.buttons || [];
 
   const getMediaUrl = () => {
-    if (uploadedMediaId) return null;
+    if (localMediaUrl) return localMediaUrl;
     const url = mapping.header_media_url || '';
     if (url.startsWith('http')) return url;
     return null;
@@ -1189,9 +1195,9 @@ function TemplatePreview({ template, mapping, csvHeaders, uploadedMediaId }) {
           </div>
        </div>
 
-       {/* Chat Area */}
-       <div className="flex-1 flex flex-col justify-end pb-4">
-          <div className="bg-white rounded-2xl rounded-tl-none p-2 shadow-sm relative max-w-[90%]">
+       {/* Chat Area - SCROLLABLE */}
+       <div className={`flex-1 overflow-y-auto px-4 py-4 space-y-4 scroll-smooth scrollbar-hide`}>
+          <div className="bg-white rounded-2xl rounded-tl-none p-2 shadow-sm relative max-w-[95%]">
              {/* Header Media */}
              {header?.type && ['IMAGE', 'VIDEO'].includes(header.type) && (
                <div className="w-full aspect-[1.91/1] bg-slate-100 rounded-lg mb-2 overflow-hidden border border-slate-100 flex items-center justify-center relative">
@@ -1245,7 +1251,7 @@ function TemplatePreview({ template, mapping, csvHeaders, uploadedMediaId }) {
              )}
 
              {/* Tail */}
-             <div className="absolute -left-2 top-0 w-2 h-4 bg-white clip-path-whatsapp-tail" />
+             <div className="absolute -left-[7px] top-0 w-2 h-4 bg-white" style={{ clipPath: 'polygon(100% 0, 0 0, 100% 100%)' }} />
           </div>
        </div>
     </div>
