@@ -420,11 +420,20 @@ app.post('/api/send', authenticateToken, async (req, res) => {
           if (template.componentsData.header.type) {
             const hType = template.componentsData.header.type;
             if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(hType)) {
-              const mediaId = mapping.header_media_url;
-              if (mediaId) {
+              // Get mapping for header media
+              let mediaValue = mapping.header_media_url;
+              // Also check if mapping[header_media_url] points to a column (e.g. from the CSV)
+              const csvColValue = contact[mapping.header_media_url];
+              const finalMediaVal = csvColValue || mediaValue;
+
+              if (finalMediaVal) {
+                const isUrl = String(finalMediaVal).startsWith('http');
                 components.push({
                   type: "header",
-                  parameters: [{ type: hType.toLowerCase(), [hType.toLowerCase()]: { id: mediaId } }]
+                  parameters: [{ 
+                    type: hType.toLowerCase(), 
+                    [hType.toLowerCase()]: isUrl ? { link: finalMediaVal } : { id: finalMediaVal } 
+                  }]
                 });
               }
             } else if (template.componentsData.header.variables.length > 0) {
