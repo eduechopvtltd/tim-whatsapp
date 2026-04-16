@@ -1,8 +1,26 @@
 const mongoose = require('mongoose');
 
-// Chat Schema: Stores the message history for each customer
+// User Schema: For multi-user authentication and per-user credentials
+const UserSchema = new mongoose.Schema({
+    username: { type: String, required: true, unique: true },
+    password: { type: String, required: true },
+    config: {
+        phoneId: { type: String, default: '' },
+        wabaId: { type: String, default: '' },
+        token: { type: String, default: '' },
+        appId: { type: String, default: '' },
+        verifyToken: { type: String, default: 'my_secret_token' }
+    },
+    hookdeck: {
+        destinationId: { type: String, default: '' },
+        sourceUrl: { type: String, default: '' }
+    }
+}, { timestamps: true });
+
+// Chat Schema: Stores the message history for each user's customers
 const ChatSchema = new mongoose.Schema({
-    phone: { type: String, required: true, unique: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    phone: { type: String, required: true },
     name: { type: String },
     messages: [{
         from: String,
@@ -13,9 +31,13 @@ const ChatSchema = new mongoose.Schema({
     }]
 }, { timestamps: true });
 
-// Campaign Schema: Stores history of bulk messaging campaigns
+// Ensure a phone number is unique ONLY within a specific user's scope
+ChatSchema.index({ userId: 1, phone: 1 }, { unique: true });
+
+// Campaign Schema: Stores history of bulk messaging campaigns per user
 const CampaignSchema = new mongoose.Schema({
-    id: { type: Number, required: true, unique: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    id: { type: Number, required: true },
     name: { type: String, required: true },
     status: { type: String, default: 'Running' },
     totalContacts: { type: Number, default: 0 },
@@ -24,13 +46,20 @@ const CampaignSchema = new mongoose.Schema({
     timestamp: { type: Date, default: Date.now }
 }, { timestamps: true });
 
-// Global State Schema: For single-object caches like mediaCache, sentHistory, etc.
+// Campaign IDs only need to be unique for a single user
+CampaignSchema.index({ userId: 1, id: 1 }, { unique: true });
+
+// Global State Schema: For single-object caches per user (mediaCache, wamid maps, etc.)
 const GlobalStateSchema = new mongoose.Schema({
-    key: { type: String, required: true, unique: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    key: { type: String, required: true },
     data: { type: mongoose.Schema.Types.Mixed, default: {} }
 });
 
+GlobalStateSchema.index({ userId: 1, key: 1 }, { unique: true });
+
 module.exports = {
+    User: mongoose.model('User', UserSchema),
     Chat: mongoose.model('Chat', ChatSchema),
     Campaign: mongoose.model('Campaign', CampaignSchema),
     GlobalState: mongoose.model('GlobalState', GlobalStateSchema)

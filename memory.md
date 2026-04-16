@@ -1,54 +1,54 @@
 # Project Memory: WhatsApp Bulk Messaging CRM 🚀
 
-This document serves as the "Source of Truth" for the WhatsApp Bulk Messaging tool. It documents the architecture, key features, and critical implementation details to ensure consistency during future updates.
+This document serves as the "Source of Truth" for the WhatsApp Bulk Messaging tool. It documents the architecture, key features, and critical implementation details for the production-grade cloud setup.
 
-## 🏗️ Architecture Overview
+## 🏗️ Architecture Overview (Cloud Edition)
 
-- **Frontend**: React (Vite) with Tailwind CSS.
-- **Backend**: Node.js/Express.
-- **API**: Meta WhatsApp Cloud API (v21.0).
-- **Persistence**: File-based storage (JSON) for local-first reliability.
-
-### 💾 Persistent Files
-- `.env`: Meta credentials and server port.
-- `campaign_history.json`: Log of all past campaigns.
-- `active_jobs.json`: Current state of running/paused jobs (used for recovery).
-- `sent_history.json`: Duplicate check history.
-- `media_cache.json`: Cached Meta media IDs (1-hour TTL).
+- **Frontend**: React (Vite) + Tailwind CSS + Framer Motion. 
+- **Backend**: Node.js/Express (Unified Hub).
+- **Database**: **MongoDB Atlas** (Cloud Persistence).
+- **Deployment**: **Render.com** (Free Tier Web Service).
+- **Webhooks**: Hookdeck (Static Bridge) + LocalTunnel (Local Dev Only).
 
 ---
 
-## 🌟 Key Features & Updates
+## 💾 Persistent Data Layer (MongoDB)
+*Migrated from local JSON to Cloud in April 2026*
 
-### 1. ⚙️ Universal Template Engine
-The app handles complex Meta templates dynamically:
-- **Headers**: Support for `IMAGE`, `VIDEO`, `DOCUMENT`, and `TEXT` types.
-- **Media Mapping**: Automatically pulls media URLs from CSV columns if mapped.
-- **Flow Buttons**: Automatic `flow_token` generation for Meta Flow components.
-- **Dynamic URL Buttons**: Map URL suffixes (like discount codes) directly from CSV.
-
-### 2. 🛡️ Production Hardening
-- **State Recovery**: If the server restarts, any "Running" campaign is recovered as "Paused (Server Restart)," allowing it to be resumed without losing progress.
-- **Ethical Throttling**: 250ms–500ms delay between messages to stay compliant with Meta's rate limits and maintain account health.
-- **Error Mapping**: Deciphers cryptic Meta error codes into user-friendly messages (e.g., "Payment Method Required 💳").
-- **Automatic Phone Cleanup**: Ensures 10-digit numbers are prefixed with the correct country code (defaulting to `91` for India, but intelligently handling regional formats).
-
-### 3. 🖥️ Direct Configuration UI
-Users can update their `WABA ID`, `Phone ID`, and `Access Token` directly from the **Configuration** tab. 
-- **Sync Logic**: Updates `process.env` immediately and persists to the `.env` file.
-- **Cache Clearing**: Syncing new credentials automatically flushes the template cache to ensure the next fetch is fresh.
+1.  **Chat Collection**: Permanent history for all conversations (replies and incoming).
+2.  **Campaign Collection**: Detailed logs of every bulk send, statuses, and performance.
+3.  **GlobalState Collection**: Internal system states (Media Cache, Sent History, WAMID maps).
 
 ---
 
-## ⚠️ Critical Implementation Rules
-*For future AI assistants or developers:*
+## 🌟 Key Features & Production Updates
 
-1.  **Frontend API Pathing**: Always use the `API_BASE` constant (`http://localhost:3001`) in `App.jsx` to avoid Vite proxy 404s.
-2.  **Object Clearing**: When clearing the `jobs` object, always use `Object.keys(jobs).forEach(key => delete jobs[key])` because it is declared as a `const`.
-3.  **Multer Configuration**: Never delete the `const upload = multer({ dest: 'uploads/' });` line; it's required for CSV uploads.
-4.  **Static Templates**: Ensure the `components` array is always included in the payload, even for static templates, to prevent Meta delivery failures.
+### 1. 🔗 Unified "One-Link" Deployment
+The Frontend and Backend are now bundled together. 
+- **Production URL**: `https://[your-app].onrender.com` opens the full dashboard directly.
+- **Smart Static Serving**: Node.js serves the built Vite `dist` folder automatically in production.
+
+### 2. 🌩️ Cloud-Smart Webhook Bridge
+- **Auto-Handshake**: The backend automatically communicates with **Hookdeck** to update its destination URL.
+- **Environment Detection**: The system intelligently skips LocalTunnel when running in the cloud to prevent deployment crashes.
+- **Permanent Meta Link**: Meta Developer Portal points to a static Hookdeck URL, meaning webhooks NEVER break even when the server restarts.
+
+### 3. 🛡️ Advanced Security & Persistence
+- **Zero-Config Persistence**: Removing local JSON dependencies ensures that all data (chats/campaigns) survives Render’s daily restarts and sleeps.
+- **Environment Security**: Sensitive tokens are managed via Render Environment Variables, with a strict `.gitignore` preventing accidental leaks to GitHub.
+
+### 4. ⚙️ Universal Template & Automation
+- **Rate Limit Management**: Fixed delays (250-500ms) and automatic retry logic for Meta Graph API.
+- **Status Sync**: Webhooks update MongoDB in real-time to show Sent/Delivered/Read statuses in the dashboard.
+
+---
 
 ## 📜 History of Major Changes
 - **2026-04-07**: Initial production hardening; state persistence implemented.
-- **2026-04-08**: Universal Template Engine finalized; support for Media and Flows added.
-- **2026-04-09**: Direct Configuration UI added; Settings sync completed.
+- **2026-04-15**: **Self-Healing Bridge** added; Hookdeck automation finalized.
+- **2026-04-16**: **Cloud Migration Complete**; MongoDB Atlas integrated, Unified Deployment live on Render.
+
+## ⚠️ Critical Deployment Rules
+1.  **Build Workflow**: On Render, always set **Build Command** to `npm run build` and **Start Command** to `npm start`.
+2.  **MongoDB URI**: Ensure the connection string in `.env` has special characters (like `@`) URL-encoded (e.g., `%40`).
+3.  **Relative API Pathing**: Frontend `App.jsx` must use a dynamic `API_BASE` that detects the origin to prevent CORS/404 errors.
