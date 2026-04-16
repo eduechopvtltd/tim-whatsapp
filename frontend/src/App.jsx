@@ -266,6 +266,52 @@ export default function App() {
     }
   };
 
+  // --- AUTO MAPPING LOGIC ---
+  useEffect(() => {
+    if (csvHeaders.length === 0) return;
+    
+    setMapping(prev => {
+      const newMapping = { ...prev };
+      
+      // Auto-map Core Fields
+      if (!newMapping.phone) {
+        const phoneCol = csvHeaders.find(h => ['phone', 'mobile', 'whatsapp', 'number', 'contact'].includes(h.toLowerCase()));
+        if (phoneCol) newMapping.phone = phoneCol;
+      }
+      if (!newMapping.name) {
+        const nameCol = csvHeaders.find(h => ['name', 'full name', 'first name', 'customer'].includes(h.toLowerCase()));
+        if (nameCol) newMapping.name = nameCol;
+      }
+      if (!newMapping.header_media_url && selectedTpl?.componentsData?.header?.type === 'IMAGE') {
+        const imgCol = csvHeaders.find(h => ['image', 'image_url', 'media', 'url', 'picture'].includes(h.toLowerCase()));
+        if (imgCol) newMapping.header_media_url = imgCol;
+      }
+
+      // Auto-map Template Variables
+      const allVars = [
+        ...(selectedTpl?.componentsData?.header?.variables || []),
+        ...(selectedTpl?.componentsData?.body?.variables || []),
+        ...(selectedTpl?.componentsData?.footer?.variables || []),
+        ...(selectedTpl?.componentsData?.buttons?.flatMap(b => b.variables) || [])
+      ];
+
+      allVars.forEach(v => {
+        if (!newMapping[v] && !newMapping[`Variable: ${v}`] && !newMapping[`Body Var ${v}`]) {
+          const match = csvHeaders.find(h => h.toLowerCase() === String(v).toLowerCase() || h.toLowerCase().includes(String(v).toLowerCase()));
+          if (match) {
+            newMapping[v] = match;
+            newMapping[`Variable: ${v}`] = match;
+            newMapping[`Body Var ${v}`] = match;
+            newMapping[`Header Var ${v}`] = match;
+            newMapping[`Footer Var ${v}`] = match;
+          }
+        }
+      });
+
+      return newMapping;
+    });
+  }, [csvHeaders, selectedTemplate, selectedTpl]);
+
   // ═══════════ CORE FUNCTIONS ═══════════
   const handleRegisterPhone = async () => {
     if (!registrationPin || registrationPin.length !== 6) { setStatus('Please enter a 6-digit PIN.'); return; }
@@ -590,9 +636,9 @@ export default function App() {
                                 <div className="space-y-5">
                                    <div className="flex gap-3 items-end">
                                       <div className="flex-1 space-y-2">
-                                         <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Select Template</label>
+                                         <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Template Name</label>
                                          <div className="relative">
-                                            <select value={selectedTemplate} onChange={e => setSelectedTemplate(e.target.value)} className="w-full bg-bg-surface border border-border-dim rounded-xl p-3.5 lg:p-4 text-xs lg:text-sm font-bold text-white outline-none appearance-none focus:border-emerald-500/30">
+                                            <select value={selectedTemplate} onChange={e => setSelectedTemplate(e.target.value)} className="w-full bg-bg-surface border border-border-dim rounded-xl p-3.5 lg:p-4 text-xs lg:text-sm font-bold text-white outline-none appearance-none focus:border-emerald-500/30 transition-all">
                                                <option value="">-- Choose Template --</option>
                                                {templates.map(t => <option key={t.name} value={t.name}>{t.name} ({t.language})</option>)}
                                             </select>
@@ -604,48 +650,66 @@ export default function App() {
                                       </button>
                                    </div>
 
-                                   {/* MEDIA HEADER CONFIG */}
-                                   {headerInfo?.type && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerInfo.type) && csvHeaders.length > 0 && (
+                                   {/* ════════ HEADER SECTION ════════ */}
+                                   {headerInfo?.type && (
                                      <div className="p-4 rounded-2xl bg-white/[0.01] border border-border-dim space-y-4">
-                                       <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Header Media Configuration</p>
-                                       <FieldSelect label={`${headerInfo.type} URL Column`} value={mapping.header_media_url || ''} onChange={v => setMapping({...mapping, header_media_url: v})} options={csvHeaders} />
-                                       <div className="relative"><div className="absolute inset-0 flex items-center" aria-hidden="true"><div className="w-full border-t border-border-dim"></div></div><div className="relative flex justify-center text-[8px] font-bold uppercase tracking-[0.2em]"><span className="bg-bg-surface px-2 text-slate-600">OR UPLOAD LOCAL</span></div></div>
-                                       <div className="flex items-center gap-3">
-                                          <label className={cn("flex-1 flex items-center justify-center gap-2 p-3 rounded-xl border border-dashed transition-all cursor-pointer", uploadedMediaId ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-500" : "border-border-dim bg-white/[0.02] hover:border-emerald-500/20 text-slate-500")}>
-                                             {isUploadingMedia ? <ArrowsClockwise size={16} className="animate-spin" /> : uploadedMediaId ? <CheckCircle size={16} weight="fill" /> : <Plus size={16} />}
-                                             <span className="text-[10px] font-bold uppercase tracking-wider">{isUploadingMedia ? 'Uploading...' : uploadedMediaId ? 'Linked to Meta' : 'Upload File'}</span>
-                                             <input type="file" className="hidden" accept={headerInfo.type === 'IMAGE' ? "image/*" : headerInfo.type === 'VIDEO' ? "video/*" : ".pdf,.doc,.docx"} onChange={handleMediaUpload} disabled={isUploadingMedia} />
-                                          </label>
-                                          {uploadedMediaId && (
-                                            <button onClick={() => { setUploadedMediaId(null); setMapping(prev => { const n = {...prev}; delete n.header_media_url; return n; }); }} className="p-3 rounded-xl bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 transition-all"><X size={16} /></button>
-                                          )}
+                                       <div className="flex items-center gap-2 mb-1">
+                                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Message Header ({headerInfo.type})</p>
                                        </div>
-                                       {uploadedMediaId && <p className="text-[9px] text-emerald-500/60 ml-1 font-mono">Meta Media ID: {uploadedMediaId}</p>}
-                                     </div>
-                                   )}
 
-                                   {/* VARIABLE MAPPING */}
-                                   {(headerInfo?.variables?.length > 0 || bodyVariables.length > 0 || footerVariables.length > 0 || buttons.some(b => b.variables?.length > 0)) && csvHeaders.length > 0 && (
-                                      <div className="space-y-4">
-                                         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Variable Mapping</p>
-                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                            {/* Header Vars */}
-                                            {headerInfo?.type === 'TEXT' && headerInfo.variables?.map((v, i) => (
+                                       {['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerInfo.type) ? (
+                                         <div className="space-y-4">
+                                            <FieldSelect 
+                                              label={`${headerInfo.type} Media URL Column *`} 
+                                              value={mapping.header_media_url || ''} 
+                                              onChange={v => setMapping({...mapping, header_media_url: v})} 
+                                              options={csvHeaders} 
+                                            />
+                                            <div className="relative"><div className="absolute inset-0 flex items-center" aria-hidden="true"><div className="w-full border-t border-border-dim opacity-20"></div></div><div className="relative flex justify-center text-[7px] font-bold uppercase tracking-widest"><span className="bg-[#0c0d0e] px-2 text-slate-600">OR SELECT LOCAL FILE</span></div></div>
+                                            <div className="flex items-center gap-3">
+                                               <label className={cn("flex-1 flex items-center justify-center gap-2 p-3 rounded-xl border border-dashed transition-all cursor-pointer", uploadedMediaId ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-500" : "border-border-dim bg-white/[0.02] hover:border-emerald-500/20 text-slate-500")}>
+                                                  {isUploadingMedia ? <ArrowsClockwise size={16} className="animate-spin" /> : uploadedMediaId ? <CheckCircle size={16} weight="fill" /> : <Plus size={16} />}
+                                                  <span className="text-[10px] font-bold uppercase tracking-wider">{isUploadingMedia ? 'Uploading...' : uploadedMediaId ? 'File Ready' : `Upload ${headerInfo.type}`}</span>
+                                                  <input type="file" className="hidden" accept={headerInfo.type === 'IMAGE' ? "image/*" : headerInfo.type === 'VIDEO' ? "video/*" : ".pdf,.doc,.docx"} onChange={handleMediaUpload} disabled={isUploadingMedia} />
+                                               </label>
+                                               {uploadedMediaId && (
+                                                 <button onClick={() => { setUploadedMediaId(null); setMapping(prev => { const n = {...prev}; delete n.header_media_url; return n; }); }} className="p-3 rounded-xl bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 transition-all"><X size={16} /></button>
+                                               )}
+                                            </div>
+                                         </div>
+                                       ) : headerInfo.type === 'TEXT' && headerInfo.variables?.length > 0 && (
+                                          <div className="grid grid-cols-1 gap-4">
+                                            {headerInfo.variables.map((v, i) => (
                                                <FieldSelect 
                                                  key={`h-${i}`} 
-                                                 label={`Header Parameter: ${headerInfo.portalNames[i] || v}`} 
-                                                 value={mapping[v] || mapping[`Header Var ${v}`] || mapping[`Variable: ${v}`] || ''} 
-                                                 onChange={val => setMapping({...mapping, [v]: val, [`Header Var ${v}`]: val, [`Variable: ${v}`]: val})} 
+                                                 label={`Header Variable: ${headerInfo.portalNames[i] || v}`} 
+                                                 value={mapping[v] || mapping[`Header Var ${v}`] || ''} 
+                                                 onChange={val => setMapping({...mapping, [v]: val, [`Header Var ${v}`]: val})} 
                                                  options={csvHeaders} 
                                                />
                                             ))}
+                                          </div>
+                                       )}
+                                     </div>
+                                   )}
+
+                                   {/* ════════ BODY SECTION ════════ */}
+                                   {(bodyVariables.length > 0 || footerVariables.length > 0 || buttons.some(b => b.variables?.length > 0)) && (
+                                      <div className="p-4 rounded-2xl bg-white/[0.01] border border-border-dim space-y-4">
+                                         <div className="flex items-center gap-2 mb-1">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Message Body & Variables</p>
+                                         </div>
+                                         
+                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                             {/* Body Vars */}
                                             {bodyVariables.map((v, i) => (
                                                <FieldSelect 
                                                  key={`b-${i}`} 
-                                                 label={`Body Parameter: ${selectedTpl?.componentsData?.body?.portalNames[i] || v}`} 
-                                                 value={mapping[v] || mapping[`Body Var ${v}`] || mapping[`Variable: ${v}`] || ''} 
-                                                 onChange={val => setMapping({...mapping, [v]: val, [`Body Var ${v}`]: val, [`Variable: ${v}`]: val})} 
+                                                 label={`Field: ${selectedTpl?.componentsData?.body?.portalNames[i] || v}`} 
+                                                 value={mapping[v] || mapping[`Body Var ${v}`] || ''} 
+                                                 onChange={val => setMapping({...mapping, [v]: val, [`Body Var ${v}`]: val})} 
                                                  options={csvHeaders} 
                                                />
                                             ))}
@@ -653,24 +717,24 @@ export default function App() {
                                             {footerVariables.map((v, i) => (
                                                <FieldSelect 
                                                  key={`f-${i}`} 
-                                                 label={`Footer Parameter: ${selectedTpl?.componentsData?.footer?.portalNames[i] || v}`} 
-                                                 value={mapping[v] || mapping[`Footer Var ${v}`] || mapping[`Variable: ${v}`] || ''} 
-                                                 onChange={val => setMapping({...mapping, [v]: val, [`Footer Var ${v}`]: val, [`Variable: ${v}`]: val})} 
+                                                 label={`Footer Field: ${selectedTpl?.componentsData?.footer?.portalNames[i] || v}`} 
+                                                 value={mapping[v] || mapping[`Footer Var ${v}`] || ''} 
+                                                 onChange={val => setMapping({...mapping, [v]: val, [`Footer Var ${v}`]: val})} 
                                                  options={csvHeaders} 
                                                />
                                             ))}
                                          </div>
                                          {/* Button Vars */}
                                          {buttons.map((btn, bIdx) => btn.variables?.length > 0 && (
-                                            <div key={`btn-${bIdx}`} className="p-3 rounded-xl bg-white/[0.01] border border-border-dim space-y-3">
-                                               <p className="text-[9px] font-bold text-slate-600 uppercase tracking-tighter">Button: {btn.text}</p>
+                                            <div key={`btn-${bIdx}`} className="p-3 rounded-xl bg-white/[0.01] border border-emerald-500/5 space-y-3">
+                                               <p className="text-[9px] font-bold text-emerald-500/60 uppercase tracking-tighter">Button Parameter: {btn.text}</p>
                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                                   {btn.variables.map((v, vIdx) => (
                                                      <FieldSelect 
                                                         key={vIdx} 
                                                         label={`Parameter: ${btn.portalNames[vIdx] || v}`} 
-                                                        value={mapping[`btn_${bIdx}_${v}`] || mapping[`Btn ${bIdx} Var ${v}`] || mapping[`Variable: ${v}`] || ''} 
-                                                        onChange={val => setMapping({...mapping, [`btn_${bIdx}_${v}`]: val, [`Btn ${bIdx} Var ${v}`]: val, [`Variable: ${v}`]: val})} 
+                                                        value={mapping[`btn_${bIdx}_${v}`] || mapping[`Btn ${bIdx} Var ${v}`] || ''} 
+                                                        onChange={val => setMapping({...mapping, [`btn_${bIdx}_${v}`]: val, [`Btn ${bIdx} Var ${v}`]: val})} 
                                                         options={csvHeaders} 
                                                      />
                                                   ))}
@@ -1096,11 +1160,9 @@ function TemplatePreview({ template, mapping, csvHeaders, uploadedMediaId }) {
   const buttons = template.componentsData?.buttons || [];
 
   const getMediaUrl = () => {
-    if (uploadedMediaId) return null; // We can't easily preview a Meta ID
-    const url = mapping.header_media_url;
-    // If it's a column name, we can't show it easily without a sample row, 
-    // but we can show a placeholder or the URL if it's a direct link.
-    if (url && url.startsWith('http')) return url;
+    if (uploadedMediaId) return null;
+    const url = mapping.header_media_url || '';
+    if (url.startsWith('http')) return url;
     return null;
   };
 
@@ -1146,10 +1208,22 @@ function TemplatePreview({ template, mapping, csvHeaders, uploadedMediaId }) {
              )}
 
              {/* Message Content */}
-             <div className="px-1 py-1 space-y-1.5">
-                {header?.type === 'TEXT' && <p className="text-[11px] font-extrabold text-slate-900 leading-tight">{header.text.replace(/{{[0-9]+}}/g, '...')}</p>}
-                <p className="text-[11px] text-slate-800 leading-relaxed whitespace-pre-wrap">{body?.text?.replace(/{{([a-zA-Z0-9_]+)}}/g, '[$1]') || '...'}</p>
-                {footer?.text && <p className="text-[10px] text-slate-400 mt-1">{footer.text}</p>}
+             <div className="px-1 py-1 space-y-1.5 text-black">
+                {header?.type === 'TEXT' && (
+                  <p className="text-[11px] font-extrabold leading-tight">
+                    {(header.text || '').replace(/{{([a-zA-Z0-9_]+)}}/g, (match, v) => {
+                      const mapCol = mapping[v] || mapping[`Header Var ${v}`] || '';
+                      return mapCol ? `[${mapCol}]` : `{{${v}}}`;
+                    })}
+                  </p>
+                )}
+                <p className="text-[11px] leading-relaxed whitespace-pre-wrap">
+                  {(body?.text || '...').replace(/{{([a-zA-Z0-9_]+)}}/g, (match, v) => {
+                    const mapCol = mapping[v] || mapping[`Body Var ${v}`] || '';
+                    return mapCol ? `[${mapCol}]` : `{{${v}}}`;
+                  })}
+                </p>
+                {footer?.text && <p className="text-[9px] text-slate-500 mt-1">{footer.text}</p>}
              </div>
              
              {/* Timestamp (fake) */}
@@ -1162,8 +1236,8 @@ function TemplatePreview({ template, mapping, csvHeaders, uploadedMediaId }) {
                <div className="mt-2 -mx-2 -mb-2 border-t border-slate-50 divide-y divide-slate-50 bg-white/50 rounded-b-2xl overflow-hidden">
                  {buttons.map((btn, idx) => (
                    <div key={idx} className="p-2.5 text-center text-[11px] font-bold text-sky-600 hover:bg-slate-50 transition-colors flex items-center justify-center gap-1.5">
-                     {btn.type === 'PHONE_NUMBER' && <PaperPlaneTilt size={12} className="rotate-90" weight="fill" />}
-                     {btn.type === 'URL' && <ArrowRight size={12} className="-rotate-45" />}
+                     {btn.type === 'PHONE_NUMBER' && <Phone size={12} weight="fill" />}
+                     {btn.type === 'URL' && <ArrowSquareOut size={12} />}
                      {btn.text}
                    </div>
                  ))}

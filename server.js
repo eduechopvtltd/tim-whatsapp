@@ -171,15 +171,16 @@ const getMetaTemplatesForUser = async (wabaId, accessToken) => {
 
     const parsedTemplates = response.data.data.filter(t => t.status === 'APPROVED').map(t => {
       const componentsData = {
-        header: { type: null, imageUrl: null, variables: [], portalNames: [] },
-        body: { variables: [], portalNames: [] },
-        footer: { variables: [], portalNames: [] },
+        header: { type: null, text: null, imageUrl: null, variables: [], portalNames: [] },
+        body: { text: null, variables: [], portalNames: [] },
+        footer: { text: null, variables: [], portalNames: [] },
         buttons: []
       };
 
       t.components.forEach(comp => {
         if (comp.type === 'HEADER') {
           componentsData.header.type = comp.format;
+          componentsData.header.text = comp.text || null;
           if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(comp.format)) {
             if (comp.example?.header_handle?.[0]) {
               componentsData.header.imageUrl = comp.example.header_handle[0];
@@ -198,6 +199,7 @@ const getMetaTemplatesForUser = async (wabaId, accessToken) => {
         }
 
         if (comp.type === 'BODY') {
+          componentsData.body.text = comp.text || null;
           const vars = comp.text?.match(/{{([a-zA-Z0-9_]+)}}/g)?.map(m => m.replace(/[{}]/g, '')) || [];
           const uniqueVars = [...new Set(vars)].sort((a, b) => {
             if (!isNaN(a) && !isNaN(b)) return parseInt(a) - parseInt(b);
@@ -211,6 +213,7 @@ const getMetaTemplatesForUser = async (wabaId, accessToken) => {
         }
 
         if (comp.type === 'FOOTER') {
+          componentsData.footer.text = comp.text || null;
           const vars = comp.text?.match(/{{([a-zA-Z0-9_]+)}}/g)?.map(m => m.replace(/[{}]/g, '')) || [];
           const uniqueVars = [...new Set(vars)].sort((a, b) => {
             if (!isNaN(a) && !isNaN(b)) return parseInt(a) - parseInt(b);
@@ -417,6 +420,11 @@ app.post('/api/send', authenticateToken, async (req, res) => {
 
           const components = [];
           
+          const getVal = (vKey) => {
+            const mapVal = mapping[vKey] || mapping[`Header Var ${vKey}`] || mapping[`Body Var ${vKey}`] || mapping[`Footer Var ${vKey}`] || mapping[`Variable: ${vKey}`] || mapping[`btn_${vKey}`] || '';
+            return String(contact[mapVal] || '');
+          };
+
           // 1. Header Component
           if (template.componentsData.header.type) {
             const hType = template.componentsData.header.type;
@@ -439,7 +447,7 @@ app.post('/api/send', authenticateToken, async (req, res) => {
               const params = template.componentsData.header.variables.map(v => ({
                 type: "text",
                 parameter_name: String(v),
-                text: String(contact[mapping[v] || mapping[`Header Var ${v}`] || mapping[`Variable: ${v}`]] || '')
+                text: getVal(v) || 'Trip In Minutes' // Smart default to avoid Meta placeholder
               }));
               components.push({ type: "header", parameters: params });
             }
@@ -450,7 +458,7 @@ app.post('/api/send', authenticateToken, async (req, res) => {
             const params = template.componentsData.body.variables.map(v => ({
               type: "text",
               parameter_name: String(v),
-              text: String(contact[mapping[v] || mapping[`Body Var ${v}`] || mapping[`Variable: ${v}`]] || '')
+              text: getVal(v) || ' ' 
             }));
             components.push({ type: "body", parameters: params });
           }
@@ -460,7 +468,7 @@ app.post('/api/send', authenticateToken, async (req, res) => {
             const params = template.componentsData.footer.variables.map(v => ({
               type: "text",
               parameter_name: String(v),
-              text: String(contact[mapping[v] || mapping[`Footer Var ${v}`] || mapping[`Variable: ${v}`]] || '')
+              text: getVal(v) || ' '
             }));
             components.push({ type: "footer", parameters: params });
           }
@@ -468,11 +476,19 @@ app.post('/api/send', authenticateToken, async (req, res) => {
           // 4. Button Components
           template.componentsData.buttons.forEach((btn, idx) => {
             if (btn.type === 'URL' && btn.variables.length > 0) {
-              const params = btn.variables.map(v => ({
-                type: "text",
-                parameter_name: String(v),
-                text: String(contact[mapping[`btn_${idx}_${v}`] || mapping[`Btn ${idx} Var ${v}`] || mapping[`Variable: ${v}`] || mapping['url_suffix']] || '')
-              }));
+              const params = btn.variables.map(v => {
+                const vKey = `btn_${idx}_${v}`;
+                const mapVal = mapping[vKey] || mapping[`Btn ${idx} Var ${v}`] || mapping[`Variable: ${v}`] || mapping['url_suffix'] || '';
+                let val = '';
+                if (mapVal.startsWith('fixed:')) val = mapVal.replace('fixed:', '');
+                else val = String(contact[mapVal] || '');
+                
+                return {
+                  type: "text",
+                  parameter_name: String(v),
+                  text: val || ' '
+                };
+              });
               components.push({ type: "button", sub_type: "url", index: idx, parameters: params });
             }
           });
