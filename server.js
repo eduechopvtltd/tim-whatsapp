@@ -429,12 +429,18 @@ app.post('/api/send', authenticateToken, async (req, res) => {
           if (template.componentsData.header.type) {
             const hType = template.componentsData.header.type;
             if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(hType)) {
-              let mediaValue = mapping.header_media_url;
-              const csvColValue = contact[mapping.header_media_url];
-              const finalMediaVal = csvColValue || mediaValue;
+              // Only use uploaded media ID (no CSV URL columns)
+              let finalMediaVal = mapping.header_media_url || null;
+
+              // Fallback to template example image if nothing uploaded
+              if (!finalMediaVal && template.componentsData.header.imageUrl) {
+                finalMediaVal = template.componentsData.header.imageUrl;
+                console.log(`[HEADER] Using template example image as fallback`);
+              }
 
               if (finalMediaVal) {
                 const isUrl = String(finalMediaVal).startsWith('http');
+                console.log(`[HEADER] Sending ${hType}: ${isUrl ? 'URL' : 'Media ID'}`);
                 components.push({
                   type: "header",
                   parameters: [{ 
@@ -442,6 +448,8 @@ app.post('/api/send', authenticateToken, async (req, res) => {
                     [hType.toLowerCase()]: isUrl ? { link: finalMediaVal } : { id: finalMediaVal } 
                   }]
                 });
+              } else {
+                console.warn(`[HEADER WARN] No media uploaded for ${hType} header — skipping`);
               }
             } else if (template.componentsData.header.variables.length > 0) {
               const params = template.componentsData.header.variables.map(v => ({

@@ -283,10 +283,6 @@ export default function App() {
         const nameCol = csvHeaders.find(h => ['name', 'full name', 'first name', 'customer'].includes(h.toLowerCase()));
         if (nameCol) newMapping.name = nameCol;
       }
-      if (!newMapping.header_media_url && selectedTpl?.componentsData?.header?.type === 'IMAGE') {
-        const imgCol = csvHeaders.find(h => ['image', 'image_url', 'media', 'url', 'picture'].includes(h.toLowerCase()));
-        if (imgCol) newMapping.header_media_url = imgCol;
-      }
 
       // Auto-map Template Variables
       const allVars = [
@@ -665,21 +661,14 @@ export default function App() {
 
                                        {['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerInfo.type) ? (
                                          <div className="space-y-4">
-                                            <FieldSelect 
-                                              label={`${headerInfo.type} Media URL Column *`} 
-                                              value={mapping.header_media_url || ''} 
-                                              onChange={v => setMapping({...mapping, header_media_url: v})} 
-                                              options={csvHeaders} 
-                                            />
-                                            <div className="relative"><div className="absolute inset-0 flex items-center" aria-hidden="true"><div className="w-full border-t border-border-dim opacity-20"></div></div><div className="relative flex justify-center text-[7px] font-bold uppercase tracking-widest"><span className="bg-[#0c0d0e] px-2 text-slate-600">OR SELECT LOCAL FILE</span></div></div>
                                             <div className="flex items-center gap-3">
-                                               <label className={cn("flex-1 flex items-center justify-center gap-2 p-3 rounded-xl border border-dashed transition-all cursor-pointer", uploadedMediaId ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-500" : "border-border-dim bg-white/[0.02] hover:border-emerald-500/20 text-slate-500")}>
+                                               <label className={cn("flex-1 flex items-center justify-center gap-2 p-3.5 rounded-xl border border-dashed transition-all cursor-pointer", uploadedMediaId ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-500" : "border-border-dim bg-white/[0.02] hover:border-emerald-500/20 text-slate-500")}>
                                                   {isUploadingMedia ? <ArrowsClockwise size={16} className="animate-spin" /> : uploadedMediaId ? <CheckCircle size={16} weight="fill" /> : <Plus size={16} />}
-                                                  <span className="text-[10px] font-bold uppercase tracking-wider">{isUploadingMedia ? 'Uploading...' : uploadedMediaId ? 'File Ready' : `Upload ${headerInfo.type}`}</span>
+                                                  <span className="text-[10px] font-bold uppercase tracking-wider">{isUploadingMedia ? 'Uploading...' : uploadedMediaId ? 'File Ready ✓' : `Upload ${headerInfo.type}`}</span>
                                                   <input type="file" className="hidden" accept={headerInfo.type === 'IMAGE' ? "image/*" : headerInfo.type === 'VIDEO' ? "video/*" : ".pdf,.doc,.docx"} onChange={handleMediaUpload} disabled={isUploadingMedia} />
                                                </label>
                                                {uploadedMediaId && (
-                                                 <button onClick={() => { setUploadedMediaId(null); setMapping(prev => { const n = {...prev}; delete n.header_media_url; return n; }); }} className="p-3 rounded-xl bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 transition-all"><X size={16} /></button>
+                                                 <button onClick={() => { setUploadedMediaId(null); setLocalMediaUrl(null); setMapping(prev => { const n = {...prev}; delete n.header_media_url; return n; }); }} className="p-3 rounded-xl bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 transition-all"><X size={16} /></button>
                                                )}
                                             </div>
                                          </div>
