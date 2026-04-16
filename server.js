@@ -315,7 +315,7 @@ app.post('/api/upload-media', authenticateToken, upload.single('media'), async (
 });
 
 // CSV Upload and Parse endpoint
-app.post('/api/upload-csv', upload.single('csv'), async (req, res) => {
+app.post('/api/upload-csv', authenticateToken, upload.single('csv'), async (req, res) => {
   const results = [];
   if (!req.file) return res.status(400).send('No file uploaded.');
 
@@ -609,12 +609,13 @@ app.post('/api/register', authenticateToken, async (req, res) => {
 });
 
 // Active Job API (Recovery)
-app.get('/api/active-job', async (req, res) => {
-  const activeJobId = Object.keys(jobs).find(
-    id => jobs[id].status === 'Running' || jobs[id].status === 'Paused'
+app.get('/api/active-job', authenticateToken, async (req, res) => {
+  const userJobs = jobs[req.user.id] || {};
+  const activeJobId = Object.keys(userJobs).find(
+    id => userJobs[id].status === 'Running' || userJobs[id].status === 'Paused'
   );
   if (activeJobId) {
-    res.json({ jobId: activeJobId, status: jobs[activeJobId] });
+    res.json({ jobId: activeJobId, status: userJobs[activeJobId] });
   } else {
     res.json({ jobId: null });
   }
