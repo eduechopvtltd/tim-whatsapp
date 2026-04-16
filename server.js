@@ -6,7 +6,6 @@ const multer = require('multer');
 const csv = require('csv-parser');
 const FormData = require('form-data');
 const axios = require('axios');
-const path = require('path');
 const stripBom = require('strip-bom-stream').default || require('strip-bom-stream');
 const mime = require('mime-types');
 require('dotenv').config();
