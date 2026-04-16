@@ -72,17 +72,19 @@ app.use((req, res, next) => {
   next();
 });
 
-const campaignHistoryFile = path.join(__dirname, 'campaign_history.json');
-const sentHistoryFile = path.join(__dirname, 'sent_history.json');
-const mediaCacheFile = path.join(__dirname, 'media_cache.json');
-const activeJobsFile = path.join(__dirname, 'active_jobs.json');
-const wamidMapFile = path.join(__dirname, 'wamid_map.json');
-const chatsFile = path.join(__dirname, 'chats.json');
-
 // Global In-memory stores (Scoped to userId)
 let jobs = {};            // { userId: { jobId: { status, results, ... } } }
 let wamidToJob = {};      // { wamid: { jobId, phone } }
 let sentHistory = {};     // { phone: { sentAt, jobId } } (Shared cache)
+let chats = {};           // In-memory cache for webhook: { phone: [...] }
+
+// Helper: find a job by jobId across all users
+const findJob = (jobId) => {
+  for (const userId of Object.keys(jobs)) {
+    if (jobs[userId][jobId]) return jobs[userId][jobId];
+  }
+  return null;
+};
 
 // --- AUTHENTICATION MIDDLEWARE ---
 const authenticateToken = (req, res, next) => {
@@ -158,26 +160,14 @@ const mapMetaError = (err) => {
   return `Error (${code}): ${err.message || 'Meta Rejected'}`;
 };
 
-// --- TEMPLATE CACHING ---
-let cachedTemplates = null;
-let cachedTemplatesTime = 0;
+// --- TEMPLATE FETCHING (User Scoped) ---
 
-const getMetaTemplates = async (force = false) => {
-  // If templates are cached and less than 1 hour old, use them to prevent rate limiting
-  // Note: forceful refreshes skip this check
-  if (!force && cachedTemplates && (Date.now() - cachedTemplatesTime < 3600000)) {
-    console.log('[CACHE] Using locally cached Meta templates');
-    return cachedTemplates;
-  }
-
-  const WABA_ID = process.env.WABA_ID;
-  const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
-
-  if (!WABA_ID || !ACCESS_TOKEN) return [];
+const getMetaTemplatesForUser = async (wabaId, accessToken) => {
+  if (!wabaId || !accessToken) return [];
 
   try {
-    const response = await axios.get(`https://graph.facebook.com/v21.0/${WABA_ID}/message_templates`, {
-      headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}` }
+    const response = await axios.get(`https://graph.facebook.com/v21.0/${wabaId}/message_templates`, {
+      headers: { 'Authorization': `Bearer ${accessToken}` }
     });
 
     const parsedTemplates = response.data.data.filter(t => t.status === 'APPROVED').map(t => {
@@ -235,17 +225,13 @@ const getMetaTemplates = async (force = false) => {
               variables: [],
               portalNames: []
             };
-
-            // URL buttons can have one variable at the end
             if (btn.type === 'URL' && btn.url && btn.url.includes('{{1}}')) {
               btnData.variables.push('url_suffix');
               btnData.portalNames.push('url_suffix');
             }
-
             if (btn.type === 'FLOW') {
               btnData.flowId = btn.flow_id;
             }
-
             componentsData.buttons.push(btnData);
           });
         }
@@ -259,38 +245,35 @@ const getMetaTemplates = async (force = false) => {
       };
     });
 
-    cachedTemplates = parsedTemplates;
-    cachedTemplatesTime = Date.now();
     return parsedTemplates;
-
   } catch (err) {
     console.error("Meta Fetch Error:", err.response?.data || err.message);
     return [];
   }
 };
 
-app.get('/api/templates/refresh', async (req, res) => {
-  cachedTemplates = null;
-  cachedTemplatesTime = 0;
-  const templates = await getMetaTemplates(true); // Force fresh fetch
-  res.json(templates);
+app.get('/api/templates', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    const templates = await getMetaTemplatesForUser(user.config.wabaId, user.config.token);
+    res.json(templates);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch templates' });
+  }
 });
 
-app.get('/api/templates', async (req, res) => {
-  const templates = await getMetaTemplates();
-  res.json(templates);
-});
 
-// Media Upload endpoint (Meta Standard Media API)
-app.post('/api/upload-media', upload.single('media'), async (req, res) => {
+// Media Upload endpoint (User Scoped)
+app.post('/api/upload-media', authenticateToken, upload.single('media'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
-  const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
-  const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
-
-  if (!PHONE_NUMBER_ID || !ACCESS_TOKEN) {
+  const user = await User.findById(req.user.id);
+  if (!user || !user.config.phoneId || !user.config.token) {
     return res.status(400).json({ error: 'Meta Credentials not configured' });
   }
+  const PHONE_NUMBER_ID = user.config.phoneId;
+  const ACCESS_TOKEN = user.config.token;
 
   try {
     const filePath = req.file.path;
@@ -392,7 +375,7 @@ app.post('/api/send', authenticateToken, async (req, res) => {
     const validContacts = contacts.filter(c => c[mapping.phone] && c[mapping.phone].trim() !== '');
     let template = null;
     if (messageType !== 'text') {
-      const templates = await getMetaTemplates();
+      const templates = await getMetaTemplatesForUser(user.config.wabaId, user.config.token);
       template = templates.find(t => t.name === templateName);
     }
 
@@ -479,30 +462,32 @@ app.get('/api/history', authenticateToken, async (req, res) => {
   }
 });
 
-// Clear history API
-app.post('/api/history/clear', async (req, res) => {
-  console.log('[CLEAR] Request received to wipe history');
-  campaignHistory = [];
-  Object.keys(jobs).forEach(key => delete jobs[key]);
-  sentHistory = {};
-
-  // Aggressive sync
-  
-  res.json({ message: 'History cleared' });
+// Clear history API (User Scoped)
+app.post('/api/history/clear', authenticateToken, async (req, res) => {
+  console.log('[CLEAR] Request received to wipe history for user', req.user.id);
+  try {
+    await Campaign.deleteMany({ userId: req.user.id });
+    if (jobs[req.user.id]) delete jobs[req.user.id];
+    sentHistory = {};
+    res.json({ message: 'History cleared' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to clear history' });
+  }
 });
 
 // Status Polling API
-app.get('/api/status/:jobId', async (req, res) => {
-  const job = jobs[req.params.jobId];
+app.get('/api/status/:jobId', authenticateToken, async (req, res) => {
+  const userJobs = jobs[req.user.id] || {};
+  const job = userJobs[req.params.jobId];
   if (!job) return res.status(404).json({ error: 'Job not found' });
   res.json(job);
 });
 
 // Pause Campaign API
-app.post('/api/pause/:jobId', async (req, res) => {
-  const job = jobs[req.params.jobId];
+app.post('/api/pause/:jobId', authenticateToken, async (req, res) => {
+  const userJobs = jobs[req.user.id] || {};
+  const job = userJobs[req.params.jobId];
   if (!job) return res.status(404).json({ error: 'Job not found' });
-
   if (job.status === 'Running' || job.status === 'Paused') {
     job.paused = true;
     job.status = 'Paused';
@@ -513,10 +498,10 @@ app.post('/api/pause/:jobId', async (req, res) => {
 });
 
 // Resume Campaign API
-app.post('/api/resume/:jobId', async (req, res) => {
-  const job = jobs[req.params.jobId];
+app.post('/api/resume/:jobId', authenticateToken, async (req, res) => {
+  const userJobs = jobs[req.user.id] || {};
+  const job = userJobs[req.params.jobId];
   if (!job) return res.status(404).json({ error: 'Job not found' });
-
   if (job.status === 'Paused') {
     job.paused = false;
     job.status = 'Running';
@@ -527,13 +512,13 @@ app.post('/api/resume/:jobId', async (req, res) => {
 });
 
 // Stop Campaign API
-app.post('/api/stop/:jobId', async (req, res) => {
-  const job = jobs[req.params.jobId];
+app.post('/api/stop/:jobId', authenticateToken, async (req, res) => {
+  const userJobs = jobs[req.user.id] || {};
+  const job = userJobs[req.params.jobId];
   if (!job) return res.status(404).json({ error: 'Job not found' });
-
   if (job.status === 'Running' || job.status === 'Paused') {
     job.stopped = true;
-    job.paused = false; // unpause to break loop immediately
+    job.paused = false;
     res.json({ message: 'Campaign stopped' });
   } else {
     res.status(400).json({ error: 'Only active campaigns can be stopped' });
@@ -586,19 +571,21 @@ app.post('/api/config', authenticateToken, async (req, res) => {
   }
 });
 
-// Manual Phone Registration with Meta
-app.post('/api/register', async (req, res) => {
+// Manual Phone Registration with Meta (User Scoped)
+app.post('/api/register', authenticateToken, async (req, res) => {
   const { pin } = req.body;
-  const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
-  const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
+  const user = await User.findById(req.user.id);
 
   if (!pin || pin.length !== 6) {
     return res.status(400).json({ error: 'A 6-digit PIN is required for registration.' });
   }
 
-  if (!PHONE_NUMBER_ID || !ACCESS_TOKEN) {
-    return res.status(400).json({ error: 'PHONE_NUMBER_ID and ACCESS_TOKEN must be configured first.' });
+  if (!user || !user.config.phoneId || !user.config.token) {
+    return res.status(400).json({ error: 'Credentials must be configured first.' });
   }
+
+  const PHONE_NUMBER_ID = user.config.phoneId;
+  const ACCESS_TOKEN = user.config.token;
 
   console.log(`[META] Attempting to register phone ${PHONE_NUMBER_ID} with PIN...`);
 
@@ -610,11 +597,6 @@ app.post('/api/register', async (req, res) => {
     );
 
     console.log('[META] Registration Successful:', response.data);
-
-    // After registration, force a template refresh to verify connection
-    cachedTemplates = null;
-    cachedTemplatesTime = 0;
-
     res.json({ success: true, message: 'Phone successfully registered and connected to Meta Cloud API!' });
   } catch (err) {
     const metaError = err.response?.data?.error?.message || err.message;
