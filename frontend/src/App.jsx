@@ -542,185 +542,199 @@ export default function App() {
 
               {/* ═══ SEND TAB ═══ */}
               {activeTab === 'send' && (
-                <motion.div key="send" {...PAGE_TRANSITION} className="max-w-4xl space-y-6 lg:space-y-8">
-                   <div className="simple-card space-y-6">
-                      <div className="flex items-center gap-3 lg:gap-4 border-b border-border-dim pb-4 lg:pb-6">
-                         <div className="w-9 h-9 lg:w-10 lg:h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500"><UploadSimple size={18} weight="bold" /></div>
-                         <div><h3 className="text-base lg:text-lg font-bold">1. Upload Contacts</h3><p className="text-[10px] lg:text-xs text-slate-500">Pick a CSV file with your phone numbers.</p></div>
-                      </div>
-                      <label className="block group cursor-pointer">
-                         <div className={cn("h-32 lg:h-40 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-2 transition-all", file ? "border-emerald-500/30 bg-emerald-500/5" : "border-border-dim bg-white/[0.01] hover:border-emerald-500/20")}>
-                            {file ? (
-                               <div className="text-center px-4">
-                                  <CheckCircle size={28} className="text-emerald-500 mx-auto mb-2" weight="fill" />
-                                  <p className="text-sm font-bold text-white truncate max-w-[250px]">{file.name}</p>
-                                  <p className="text-[10px] text-emerald-500 font-bold uppercase mt-1">{csvData.length} Contacts Found</p>
-                               </div>
-                            ) : (
-                               <div className="text-center"><Plus size={22} className="text-slate-600 mb-2 mx-auto" weight="bold" /><p className="text-[10px] lg:text-xs font-bold text-slate-500 uppercase tracking-widest">Click to Upload CSV</p></div>
-                            )}
+                <motion.div key="send" {...PAGE_TRANSITION} className="max-w-6xl mx-auto flex flex-col lg:flex-row gap-8 pb-20">
+                   {/* LEFT COLUMN: CONFIGURATION */}
+                   <div className="flex-1 space-y-6 lg:space-y-8 min-w-0">
+                      
+                      {/* 1. UPLOAD CONTACTS */}
+                      <div className="simple-card space-y-6">
+                         <div className="flex items-center gap-3 lg:gap-4 border-b border-border-dim pb-4 lg:pb-6">
+                            <div className="w-9 h-9 lg:w-10 lg:h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500"><UploadSimple size={18} weight="bold" /></div>
+                            <div><h3 className="text-base lg:text-lg font-bold">1. Upload Contacts</h3><p className="text-[10px] lg:text-xs text-slate-500">Pick a CSV file with your phone numbers.</p></div>
                          </div>
-                         <input key={fileKey} type="file" accept=".csv" className="hidden" onChange={handleFileUpload} />
-                      </label>
-                      {csvHeaders.length > 0 && (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-border-dim">
-                           <FieldSelect label="Phone Number Column *" value={mapping.phone || ''} onChange={v => setMapping({...mapping, phone: v})} options={csvHeaders} />
-                           <FieldSelect label="Name Column (Optional)" value={mapping.name || ''} onChange={v => setMapping({...mapping, name: v})} options={csvHeaders} />
-                        </div>
-                      )}
-                   </div>
-
-                   <div className="simple-card space-y-6">
-                      <div className="flex items-center gap-3 lg:gap-4 border-b border-border-dim pb-4 lg:pb-6">
-                         <div className="w-9 h-9 lg:w-10 lg:h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500"><PaperPlaneTilt size={18} weight="bold" /></div>
-                         <div className="flex-1"><h3 className="text-base lg:text-lg font-bold">2. Choose Message</h3><p className="text-[10px] lg:text-xs text-slate-500">Pick a template or write a custom message.</p></div>
+                         <label className="block group cursor-pointer">
+                            <div className={cn("h-32 lg:h-40 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-2 transition-all", file ? "border-emerald-500/30 bg-emerald-500/5" : "border-border-dim bg-white/[0.01] hover:border-emerald-500/20")}>
+                               {file ? (
+                                  <div className="text-center px-4">
+                                     <CheckCircle size={28} className="text-emerald-500 mx-auto mb-2" weight="fill" />
+                                     <p className="text-sm font-bold text-white truncate max-w-[250px]">{file.name}</p>
+                                     <p className="text-[10px] text-emerald-500 font-bold uppercase mt-1">{csvData.length} Contacts Found</p>
+                                  </div>
+                               ) : (
+                                  <div className="text-center"><Plus size={22} className="text-slate-600 mb-2 mx-auto" weight="bold" /><p className="text-[10px] lg:text-xs font-bold text-slate-500 uppercase tracking-widest">Click to Upload CSV</p></div>
+                               )}
+                            </div>
+                            <input key={fileKey} type="file" accept=".csv" className="hidden" onChange={handleFileUpload} />
+                         </label>
+                         {csvHeaders.length > 0 && (
+                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-border-dim">
+                              <FieldSelect label="Phone Number Column *" value={mapping.phone || ''} onChange={v => setMapping({...mapping, phone: v})} options={csvHeaders} />
+                              <FieldSelect label="Name Column (Optional)" value={mapping.name || ''} onChange={v => setMapping({...mapping, name: v})} options={csvHeaders} />
+                           </div>
+                         )}
                       </div>
-                      <div className="space-y-6">
-                          <div className="flex gap-2 p-1 bg-white/[0.02] border border-border-dim rounded-xl w-fit">
-                             <button onClick={() => setMessageType('template')} className={cn("px-6 lg:px-8 py-2.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all", messageType === 'template' ? "bg-emerald-500 text-black shadow-lg" : "text-slate-500 hover:text-slate-300")}>Template</button>
-                             <button onClick={() => setMessageType('custom')} className={cn("px-6 lg:px-8 py-2.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all", messageType === 'custom' ? "bg-emerald-500 text-black shadow-lg" : "text-slate-500 hover:text-slate-300")}>Custom</button>
-                          </div>
-                          {messageType === 'template' ? (
-                             <div className="space-y-5">
-                                <div className="flex gap-3 items-end">
-                                   <div className="flex-1 space-y-2">
-                                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Select Template</label>
-                                      <div className="relative">
-                                         <select value={selectedTemplate} onChange={e => setSelectedTemplate(e.target.value)} className="w-full bg-bg-surface border border-border-dim rounded-xl p-3.5 lg:p-4 text-xs lg:text-sm font-bold text-white outline-none appearance-none focus:border-emerald-500/30">
-                                            <option value="">-- Choose Template --</option>
-                                            {templates.map(t => <option key={t.name} value={t.name}>{t.name} ({t.language})</option>)}
-                                         </select>
-                                         <CaretDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-600 pointer-events-none" size={14} />
+
+                      {/* 2. CHOOSE MESSAGE */}
+                      <div className="simple-card space-y-6">
+                         <div className="flex items-center gap-3 lg:gap-4 border-b border-border-dim pb-4 lg:pb-6">
+                            <div className="w-9 h-9 lg:w-10 lg:h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500"><PaperPlaneTilt size={18} weight="bold" /></div>
+                            <div className="flex-1"><h3 className="text-base lg:text-lg font-bold">2. Choose Message</h3><p className="text-[10px] lg:text-xs text-slate-500">Pick a template or write a custom message.</p></div>
+                         </div>
+                         <div className="space-y-6">
+                             <div className="flex gap-2 p-1 bg-white/[0.02] border border-border-dim rounded-xl w-fit">
+                                <button onClick={() => setMessageType('template')} className={cn("px-6 lg:px-8 py-2.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all", messageType === 'template' ? "bg-emerald-500 text-black shadow-lg" : "text-slate-500 hover:text-slate-300")}>Template</button>
+                                <button onClick={() => setMessageType('custom')} className={cn("px-6 lg:px-8 py-2.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all", messageType === 'custom' ? "bg-emerald-500 text-black shadow-lg" : "text-slate-500 hover:text-slate-300")}>Custom</button>
+                             </div>
+                             
+                             {messageType === 'template' ? (
+                                <div className="space-y-5">
+                                   <div className="flex gap-3 items-end">
+                                      <div className="flex-1 space-y-2">
+                                         <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Select Template</label>
+                                         <div className="relative">
+                                            <select value={selectedTemplate} onChange={e => setSelectedTemplate(e.target.value)} className="w-full bg-bg-surface border border-border-dim rounded-xl p-3.5 lg:p-4 text-xs lg:text-sm font-bold text-white outline-none appearance-none focus:border-emerald-500/30">
+                                               <option value="">-- Choose Template --</option>
+                                               {templates.map(t => <option key={t.name} value={t.name}>{t.name} ({t.language})</option>)}
+                                            </select>
+                                            <CaretDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-600 pointer-events-none" size={14} />
+                                         </div>
                                       </div>
+                                      <button onClick={handleRefreshTemplates} disabled={refreshingTemplates} className={cn("simple-btn bg-white/5 border border-border-dim text-slate-400 hover:text-emerald-500 hover:border-emerald-500/20 h-[46px] lg:h-[52px] px-3.5 mb-[1px]", refreshingTemplates && "animate-pulse")} title="Refresh templates">
+                                         <ArrowsClockwise size={20} className={refreshingTemplates ? "animate-spin" : ""} />
+                                      </button>
                                    </div>
-                                   <button onClick={handleRefreshTemplates} disabled={refreshingTemplates} className={cn("simple-btn bg-white/5 border border-border-dim text-slate-400 hover:text-emerald-500 hover:border-emerald-500/20 h-[46px] lg:h-[52px] px-3.5 mb-[1px]", refreshingTemplates && "animate-pulse")} title="Refresh templates">
-                                      <ArrowsClockwise size={20} className={refreshingTemplates ? "animate-spin" : ""} />
-                                   </button>
-                                   {selectedTpl && (
-                                     <button onClick={() => setShowPreview(!showPreview)} className="simple-btn bg-white/5 border border-border-dim text-slate-400 hover:text-emerald-500 hover:border-emerald-500/20 h-[46px] lg:h-[52px] px-3.5 mb-[1px]" title="Preview"><Eye size={20} /></button>
+
+                                   {/* MEDIA HEADER CONFIG */}
+                                   {headerInfo?.type && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerInfo.type) && csvHeaders.length > 0 && (
+                                     <div className="p-4 rounded-2xl bg-white/[0.01] border border-border-dim space-y-4">
+                                       <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Header Media Configuration</p>
+                                       <FieldSelect label={`${headerInfo.type} URL Column`} value={mapping.header_media_url || ''} onChange={v => setMapping({...mapping, header_media_url: v})} options={csvHeaders} />
+                                       <div className="relative"><div className="absolute inset-0 flex items-center" aria-hidden="true"><div className="w-full border-t border-border-dim"></div></div><div className="relative flex justify-center text-[8px] font-bold uppercase tracking-[0.2em]"><span className="bg-bg-surface px-2 text-slate-600">OR UPLOAD LOCAL</span></div></div>
+                                       <div className="flex items-center gap-3">
+                                          <label className={cn("flex-1 flex items-center justify-center gap-2 p-3 rounded-xl border border-dashed transition-all cursor-pointer", uploadedMediaId ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-500" : "border-border-dim bg-white/[0.02] hover:border-emerald-500/20 text-slate-500")}>
+                                             {isUploadingMedia ? <ArrowsClockwise size={16} className="animate-spin" /> : uploadedMediaId ? <CheckCircle size={16} weight="fill" /> : <Plus size={16} />}
+                                             <span className="text-[10px] font-bold uppercase tracking-wider">{isUploadingMedia ? 'Uploading...' : uploadedMediaId ? 'Linked to Meta' : 'Upload File'}</span>
+                                             <input type="file" className="hidden" accept={headerInfo.type === 'IMAGE' ? "image/*" : headerInfo.type === 'VIDEO' ? "video/*" : ".pdf,.doc,.docx"} onChange={handleMediaUpload} disabled={isUploadingMedia} />
+                                          </label>
+                                          {uploadedMediaId && (
+                                            <button onClick={() => { setUploadedMediaId(null); setMapping(prev => { const n = {...prev}; delete n.header_media_url; return n; }); }} className="p-3 rounded-xl bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 transition-all"><X size={16} /></button>
+                                          )}
+                                       </div>
+                                       {uploadedMediaId && <p className="text-[9px] text-emerald-500/60 ml-1 font-mono">Meta Media ID: {uploadedMediaId}</p>}
+                                     </div>
+                                   )}
+
+                                   {/* VARIABLE MAPPING */}
+                                   {(headerInfo?.variables?.length > 0 || bodyVariables.length > 0 || footerVariables.length > 0 || buttons.some(b => b.variables?.length > 0)) && csvHeaders.length > 0 && (
+                                      <div className="space-y-4">
+                                         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Variable Mapping</p>
+                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            {/* Header Vars */}
+                                            {headerInfo?.type === 'TEXT' && headerInfo.variables?.map((v, i) => (
+                                               <FieldSelect 
+                                                 key={`h-${i}`} 
+                                                 label={`Header Parameter: ${headerInfo.portalNames[i] || v}`} 
+                                                 value={mapping[v] || mapping[`Header Var ${v}`] || mapping[`Variable: ${v}`] || ''} 
+                                                 onChange={val => setMapping({...mapping, [v]: val, [`Header Var ${v}`]: val, [`Variable: ${v}`]: val})} 
+                                                 options={csvHeaders} 
+                                               />
+                                            ))}
+                                            {/* Body Vars */}
+                                            {bodyVariables.map((v, i) => (
+                                               <FieldSelect 
+                                                 key={`b-${i}`} 
+                                                 label={`Body Parameter: ${selectedTpl?.componentsData?.body?.portalNames[i] || v}`} 
+                                                 value={mapping[v] || mapping[`Body Var ${v}`] || mapping[`Variable: ${v}`] || ''} 
+                                                 onChange={val => setMapping({...mapping, [v]: val, [`Body Var ${v}`]: val, [`Variable: ${v}`]: val})} 
+                                                 options={csvHeaders} 
+                                               />
+                                            ))}
+                                            {/* Footer Vars */}
+                                            {footerVariables.map((v, i) => (
+                                               <FieldSelect 
+                                                 key={`f-${i}`} 
+                                                 label={`Footer Parameter: ${selectedTpl?.componentsData?.footer?.portalNames[i] || v}`} 
+                                                 value={mapping[v] || mapping[`Footer Var ${v}`] || mapping[`Variable: ${v}`] || ''} 
+                                                 onChange={val => setMapping({...mapping, [v]: val, [`Footer Var ${v}`]: val, [`Variable: ${v}`]: val})} 
+                                                 options={csvHeaders} 
+                                               />
+                                            ))}
+                                         </div>
+                                         {/* Button Vars */}
+                                         {buttons.map((btn, bIdx) => btn.variables?.length > 0 && (
+                                            <div key={`btn-${bIdx}`} className="p-3 rounded-xl bg-white/[0.01] border border-border-dim space-y-3">
+                                               <p className="text-[9px] font-bold text-slate-600 uppercase tracking-tighter">Button: {btn.text}</p>
+                                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                  {btn.variables.map((v, vIdx) => (
+                                                     <FieldSelect 
+                                                        key={vIdx} 
+                                                        label={`Parameter: ${btn.portalNames[vIdx] || v}`} 
+                                                        value={mapping[`btn_${bIdx}_${v}`] || mapping[`Btn ${bIdx} Var ${v}`] || mapping[`Variable: ${v}`] || ''} 
+                                                        onChange={val => setMapping({...mapping, [`btn_${bIdx}_${v}`]: val, [`Btn ${bIdx} Var ${v}`]: val, [`Variable: ${v}`]: val})} 
+                                                        options={csvHeaders} 
+                                                     />
+                                                  ))}
+                                               </div>
+                                            </div>
+                                         ))}
+                                      </div>
                                    )}
                                 </div>
-                                {showPreview && selectedTpl && (
-                                  <div className="p-4 rounded-xl bg-emerald-500/5 border border-emerald-500/10 text-xs text-slate-300 space-y-2">
-                                    <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Template Info</p>
-                                    <p><span className="text-slate-500">Name:</span> {selectedTpl.name}</p>
-                                    <p><span className="text-slate-500">Language:</span> {selectedTpl.language}</p>
-                                    <p><span className="text-slate-500">Format:</span> {selectedTpl.format}</p>
-                                    {headerInfo?.type && <p><span className="text-slate-500">Header:</span> {headerInfo.type}</p>}
-                                    <p><span className="text-slate-500">Body Variables:</span> {bodyVariables.length > 0 ? bodyVariables.join(', ') : 'None'}</p>
-                                  </div>
-                                )}
-                                {headerInfo?.type && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerInfo.type) && csvHeaders.length > 0 && (
-                                  <div className="space-y-4">
-                                    <FieldSelect label={`${headerInfo.type} URL Column`} value={mapping.header_media_url || ''} onChange={v => setMapping({...mapping, header_media_url: v})} options={csvHeaders} />
-                                    <div className="relative"><div className="absolute inset-0 flex items-center" aria-hidden="true"><div className="w-full border-t border-border-dim"></div></div><div className="relative flex justify-center text-[8px] font-bold uppercase tracking-[0.2em]"><span className="bg-bg-surface px-2 text-slate-600">OR UPLOAD LOCAL IMAGE</span></div></div>
-                                    <div className="flex items-center gap-3">
-                                       <label className={cn("flex-1 flex items-center justify-center gap-2 p-3 rounded-xl border border-dashed transition-all cursor-pointer", uploadedMediaId ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-500" : "border-border-dim bg-white/[0.02] hover:border-emerald-500/20 text-slate-500")}>
-                                          {isUploadingMedia ? <ArrowsClockwise size={16} className="animate-spin" /> : uploadedMediaId ? <CheckCircle size={16} weight="fill" /> : <Plus size={16} />}
-                                          <span className="text-[10px] font-bold uppercase tracking-wider">{isUploadingMedia ? 'Uploading...' : uploadedMediaId ? 'Image Linked' : 'Upload Local Image'}</span>
-                                          <input type="file" className="hidden" accept="image/*" onChange={handleMediaUpload} disabled={isUploadingMedia} />
-                                       </label>
-                                       {uploadedMediaId && (
-                                         <button onClick={() => { setUploadedMediaId(null); setMapping(prev => { const n = {...prev}; delete n.header_media_url; return n; }); }} className="p-3 rounded-xl bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 transition-all"><X size={16} /></button>
-                                       )}
-                                    </div>
-                                    {uploadedMediaId && <p className="text-[9px] text-emerald-500/60 ml-1 font-mono">Meta ID: {uploadedMediaId}</p>}
-                                  </div>
-                                )}
-                                 {headerInfo?.type === 'TEXT' && headerInfo.variables?.length > 0 && csvHeaders.length > 0 && (
-                                   <div className="space-y-3">
-                                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Header Variables</p>
-                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                       {headerInfo.variables.map((v, i) => (
-                                          <FieldSelect 
-                                            key={i} 
-                                            label={headerInfo.portalNames[i]} 
-                                            value={mapping[v] || mapping[`Header Var ${v}`] || ''} 
-                                            onChange={val => setMapping({...mapping, [v]: val, [`Header Var ${v}`]: val})} 
-                                            options={csvHeaders} 
-                                          />
-                                       ))}
-                                     </div>
-                                   </div>
-                                 )}
-
-                                 {/* BODY VARIABLES */}
-                                 {bodyVariables.length > 0 && csvHeaders.length > 0 && (
-                                   <div className="space-y-3">
-                                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Body Variables</p>
-                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        {bodyVariables.map((v, i) => (
-                                           <FieldSelect 
-                                             key={i} 
-                                             label={selectedTpl?.componentsData?.body?.portalNames[i] || `Body Var ${v}`} 
-                                             value={mapping[v] || mapping[`Body Var ${v}`] || ''} 
-                                             onChange={val => setMapping({...mapping, [v]: val, [`Body Var ${v}`]: val})} 
-                                             options={csvHeaders} 
-                                           />
-                                        ))}
-                                     </div>
-                                   </div>
-                                 )}
-
-                                 {/* FOOTER VARIABLES */}
-                                 {footerVariables.length > 0 && csvHeaders.length > 0 && (
-                                   <div className="space-y-3">
-                                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Footer Variables</p>
-                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                       {footerVariables.map((v, i) => (
-                                          <FieldSelect 
-                                            key={i} 
-                                            label={selectedTpl?.componentsData?.footer?.portalNames[i] || `Footer Var ${v}`} 
-                                            value={mapping[v] || mapping[`Footer Var ${v}`] || ''} 
-                                            onChange={val => setMapping({...mapping, [v]: val, [`Footer Var ${v}`]: val})} 
-                                            options={csvHeaders} 
-                                          />
-                                       ))}
-                                     </div>
-                                   </div>
-                                 )}
-
-                                 {/* BUTTON VARIABLES */}
-                                 {buttons.filter(b => b.variables?.length > 0).length > 0 && csvHeaders.length > 0 && (
-                                   <div className="space-y-4">
-                                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Button Parameters</p>
-                                     {buttons.map((btn, bIdx) => btn.variables?.length > 0 && (
-                                        <div key={bIdx} className="p-3 rounded-xl bg-white/[0.01] border border-border-dim space-y-3">
-                                           <p className="text-[9px] font-bold text-slate-600 uppercase tracking-tighter italic">Button {bIdx + 1}: {btn.text}</p>
-                                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                              {btn.variables.map((v, vIdx) => (
-                                                 <FieldSelect 
-                                                    key={vIdx} 
-                                                    label={btn.portalNames[vIdx]} 
-                                                    value={mapping[`btn_${bIdx}_${v}`] || mapping[`Btn ${bIdx} Var ${v}`] || ''} 
-                                                    onChange={val => setMapping({...mapping, [`btn_${bIdx}_${v}`]: val, [`Btn ${bIdx} Var ${v}`]: val})} 
-                                                    options={csvHeaders} 
-                                                 />
-                                              ))}
-                                           </div>
-                                        </div>
-                                     ))}
-                                   </div>
-                                 )}
-                             </div>
-                          ) : (
-                             <div className="space-y-2">
-                                <textarea value={customMessage} onChange={e => setCustomMessage(e.target.value)} placeholder="Type your message here... Use {{ColumnName}} to insert data from your CSV." className="w-full h-32 lg:h-40 bg-bg-surface border border-border-dim rounded-xl p-4 lg:p-5 text-sm font-medium text-white outline-none focus:border-emerald-500/30 resize-none" />
-                                <p className="text-[10px] text-slate-600 ml-1">Tip: Use {"{{Name}}"} or {"{{Phone}}"} to insert CSV column values.</p>
-                             </div>
-                          )}
-                      </div>
-                      {status && (<div className="p-3 rounded-xl bg-white/[0.02] border border-border-dim flex items-center gap-2 text-xs text-slate-400"><WarningCircle size={14} className="text-emerald-500 shrink-0" />{status}</div>)}
-                      <div className="pt-4 lg:pt-6 border-t border-border-dim flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                         <div className="flex items-center gap-3 cursor-pointer" onClick={() => setAllowDuplicates(!allowDuplicates)}>
-                            <div className={cn("w-5 h-5 rounded-md border flex items-center justify-center transition-all", allowDuplicates ? "bg-emerald-500 border-emerald-500" : "border-border-dim bg-white/5")}>
-                               {allowDuplicates && <CheckCircle size={14} className="text-black" weight="bold" />}
-                            </div>
-                            <span className="text-xs font-medium text-slate-500">Allow duplicate numbers</span>
+                             ) : (
+                                <div className="space-y-2">
+                                   <textarea value={customMessage} onChange={e => setCustomMessage(e.target.value)} placeholder="Type your message here... Use {{ColumnName}} to insert data from your CSV." className="w-full h-32 lg:h-40 bg-bg-surface border border-border-dim rounded-xl p-4 lg:p-5 text-sm font-medium text-white outline-none focus:border-emerald-500/30 resize-none" />
+                                   <p className="text-[10px] text-slate-600 ml-1">Tip: Use {"{{Name}}"} or {"{{Phone}}"} to insert CSV column values.</p>
+                                </div>
+                             )}
                          </div>
-                         <button onClick={handleSend} disabled={isLoading.send || !isConnected || !file || csvData.length === 0} className="simple-btn btn-primary px-8 lg:px-10 h-11 lg:h-12 flex items-center gap-2 w-full sm:w-auto justify-center">
-                            {isLoading.send ? 'Starting...' : <><PaperPlaneTilt weight="bold" /> Start Sending</>}
-                         </button>
+
+                         {status && (<div className="p-3 rounded-xl bg-white/[0.02] border border-border-dim flex items-center gap-2 text-xs text-slate-400"><WarningCircle size={14} className="text-emerald-500 shrink-0" />{status}</div>)}
+                         
+                         <div className="pt-4 lg:pt-6 border-t border-border-dim flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                            <div className="flex items-center gap-3 cursor-pointer" onClick={() => setAllowDuplicates(!allowDuplicates)}>
+                               <div className={cn("w-5 h-5 rounded-md border flex items-center justify-center transition-all", allowDuplicates ? "bg-emerald-500 border-emerald-500" : "border-border-dim bg-white/5")}>
+                                  {allowDuplicates && <CheckCircle size={14} className="text-black" weight="bold" />}
+                               </div>
+                               <span className="text-xs font-medium text-slate-500">Allow duplicate numbers</span>
+                            </div>
+                            <button onClick={handleSend} disabled={isLoading.send || !isConnected || !file || csvData.length === 0} className="simple-btn btn-primary px-8 lg:px-10 h-11 lg:h-12 flex items-center gap-2 w-full sm:w-auto justify-center">
+                               {isLoading.send ? 'Starting...' : <><PaperPlaneTilt weight="bold" /> Start Sending</>}
+                            </button>
+                         </div>
+                      </div>
+                   </div>
+
+                   {/* RIGHT COLUMN: PREVIEW (STICKY) */}
+                   <div className="w-full lg:w-[350px] shrink-0">
+                      <div className="sticky top-24 space-y-4">
+                         <div className="flex items-center justify-between px-2">
+                            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Live Preview</h3>
+                            <div className="flex items-center gap-2">
+                               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                               <span className="text-[10px] font-bold text-emerald-500/60 uppercase">High Fidelity</span>
+                            </div>
+                         </div>
+                         <TemplatePreview 
+                           template={selectedTpl} 
+                           mapping={mapping} 
+                           csvHeaders={csvHeaders} 
+                           uploadedMediaId={uploadedMediaId}
+                         />
+                         {selectedTpl && (
+                           <div className="p-4 rounded-2xl bg-white/[0.01] border border-border-dim">
+                              <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 text-center">Template Details</p>
+                              <div className="grid grid-cols-2 gap-2 text-[9px] font-bold">
+                                 <div className="bg-bg-surface p-2 rounded-lg border border-border-dim text-center">
+                                    <p className="text-slate-600 mb-0.5">CATEGORY</p>
+                                    <p className="text-white truncate">{selectedTpl.category || 'MARKETING'}</p>
+                                 </div>
+                                 <div className="bg-bg-surface p-2 rounded-lg border border-border-dim text-center">
+                                    <p className="text-slate-600 mb-0.5">LANGUAGE</p>
+                                    <p className="text-white">{selectedTpl.language || 'en'}</p>
+                                 </div>
+                              </div>
+                           </div>
+                         )}
                       </div>
                    </div>
                 </motion.div>
@@ -1069,6 +1083,97 @@ export default function App() {
            </div>
          )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+function TemplatePreview({ template, mapping, csvHeaders, uploadedMediaId }) {
+  if (!template) return null;
+
+  const header = template.componentsData?.header;
+  const body = template.componentsData?.body;
+  const footer = template.componentsData?.footer;
+  const buttons = template.componentsData?.buttons || [];
+
+  const getMediaUrl = () => {
+    if (uploadedMediaId) return null; // We can't easily preview a Meta ID
+    const url = mapping.header_media_url;
+    // If it's a column name, we can't show it easily without a sample row, 
+    // but we can show a placeholder or the URL if it's a direct link.
+    if (url && url.startsWith('http')) return url;
+    return null;
+  };
+
+  const mediaUrl = getMediaUrl();
+
+  return (
+    <div className="w-full max-w-[320px] mx-auto bg-[#efeae2] rounded-[2rem] p-4 shadow-2xl border-[8px] border-slate-900 relative overflow-hidden flex flex-col h-[580px]">
+       {/* Status Bar */}
+       <div className="flex justify-between items-center px-4 mb-4 text-[10px] font-bold text-slate-400">
+          <span>9:41</span>
+          <div className="flex gap-1.5 items-center">
+             <div className="w-3 h-3 rounded-full border border-slate-400" />
+             <div className="w-1.5 h-3 bg-slate-400 rounded-sm" />
+             <div className="w-4 h-2 bg-emerald-500 rounded-sm" />
+          </div>
+       </div>
+
+       {/* Conversation Header */}
+       <div className="bg-[#f0f2f5] -mx-4 -mt-4 p-4 mb-4 flex items-center gap-3 border-b border-slate-200">
+          <div className="w-10 h-10 rounded-full bg-slate-300 flex items-center justify-center"><Plus size={20} className="rotate-45 text-slate-500" /></div>
+          <div>
+             <p className="text-xs font-bold text-slate-800">Business Preview</p>
+             <p className="text-[9px] text-slate-500">Online</p>
+          </div>
+       </div>
+
+       {/* Chat Area */}
+       <div className="flex-1 flex flex-col justify-end pb-4">
+          <div className="bg-white rounded-2xl rounded-tl-none p-2 shadow-sm relative max-w-[90%]">
+             {/* Header Media */}
+             {header?.type && ['IMAGE', 'VIDEO'].includes(header.type) && (
+               <div className="w-full aspect-[1.91/1] bg-slate-100 rounded-lg mb-2 overflow-hidden border border-slate-100 flex items-center justify-center relative">
+                  {mediaUrl ? (
+                    <img src={mediaUrl} className="w-full h-full object-contain bg-slate-50" alt="Preview" />
+                  ) : (
+                    <div className="text-center space-y-1">
+                       {header.type === 'IMAGE' ? <Plus size={24} className="mx-auto text-slate-300" /> : <Play size={24} className="mx-auto text-slate-300" weight="fill" />}
+                       <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">{header.type} PREVIEW</p>
+                    </div>
+                  )}
+                  {uploadedMediaId && <div className="absolute inset-0 bg-emerald-500/10 flex items-center justify-center"><CheckCircle size={20} className="text-emerald-500" weight="fill" /></div>}
+               </div>
+             )}
+
+             {/* Message Content */}
+             <div className="px-1 py-1 space-y-1.5">
+                {header?.type === 'TEXT' && <p className="text-[11px] font-extrabold text-slate-900 leading-tight">{header.text.replace(/{{[0-9]+}}/g, '...')}</p>}
+                <p className="text-[11px] text-slate-800 leading-relaxed whitespace-pre-wrap">{body?.text?.replace(/{{([a-zA-Z0-9_]+)}}/g, '[$1]') || '...'}</p>
+                {footer?.text && <p className="text-[10px] text-slate-400 mt-1">{footer.text}</p>}
+             </div>
+             
+             {/* Timestamp (fake) */}
+             <div className="text-right mt-1.5">
+                <span className="text-[8px] text-slate-400 font-bold">12:34 PM</span>
+             </div>
+
+             {/* Buttons Section */}
+             {buttons.length > 0 && (
+               <div className="mt-2 -mx-2 -mb-2 border-t border-slate-50 divide-y divide-slate-50 bg-white/50 rounded-b-2xl overflow-hidden">
+                 {buttons.map((btn, idx) => (
+                   <div key={idx} className="p-2.5 text-center text-[11px] font-bold text-sky-600 hover:bg-slate-50 transition-colors flex items-center justify-center gap-1.5">
+                     {btn.type === 'PHONE_NUMBER' && <PaperPlaneTilt size={12} className="rotate-90" weight="fill" />}
+                     {btn.type === 'URL' && <ArrowRight size={12} className="-rotate-45" />}
+                     {btn.text}
+                   </div>
+                 ))}
+               </div>
+             )}
+
+             {/* Tail */}
+             <div className="absolute -left-2 top-0 w-2 h-4 bg-white clip-path-whatsapp-tail" />
+          </div>
+       </div>
     </div>
   );
 }

@@ -436,43 +436,43 @@ app.post('/api/send', authenticateToken, async (req, res) => {
                 });
               }
             } else if (template.componentsData.header.variables.length > 0) {
-              const params = template.componentsData.header.variables.map(v => {
-                const param = { type: "text", text: String(contact[mapping[v] || mapping[`Header Var ${v}`] || mapping[`Variable: ${v}`]] || '') };
-                if (isNaN(v)) param.parameter_name = v;
-                return param;
-              });
+              const params = template.componentsData.header.variables.map(v => ({
+                type: "text",
+                parameter_name: String(v),
+                text: String(contact[mapping[v] || mapping[`Header Var ${v}`] || mapping[`Variable: ${v}`]] || '')
+              }));
               components.push({ type: "header", parameters: params });
             }
           }
 
           // 2. Body Component
           if (template.componentsData.body.variables.length > 0) {
-            const params = template.componentsData.body.variables.map(v => {
-              const param = { type: "text", text: String(contact[mapping[v] || mapping[`Body Var ${v}`] || mapping[`Variable: ${v}`]] || '') };
-              if (isNaN(v)) param.parameter_name = v;
-              return param;
-            });
+            const params = template.componentsData.body.variables.map(v => ({
+              type: "text",
+              parameter_name: String(v),
+              text: String(contact[mapping[v] || mapping[`Body Var ${v}`] || mapping[`Variable: ${v}`]] || '')
+            }));
             components.push({ type: "body", parameters: params });
           }
 
           // 3. Footer Component
           if (template.componentsData.footer.variables.length > 0) {
-            const params = template.componentsData.footer.variables.map(v => {
-              const param = { type: "text", text: String(contact[mapping[v] || mapping[`Footer Var ${v}`] || mapping[`Variable: ${v}`]] || '') };
-              if (isNaN(v)) param.parameter_name = v;
-              return param;
-            });
+            const params = template.componentsData.footer.variables.map(v => ({
+              type: "text",
+              parameter_name: String(v),
+              text: String(contact[mapping[v] || mapping[`Footer Var ${v}`] || mapping[`Variable: ${v}`]] || '')
+            }));
             components.push({ type: "footer", parameters: params });
           }
 
           // 4. Button Components
           template.componentsData.buttons.forEach((btn, idx) => {
             if (btn.type === 'URL' && btn.variables.length > 0) {
-              const params = btn.variables.map(v => {
-                const param = { type: "text", text: String(contact[mapping[`btn_${idx}_${v}`] || mapping[`Btn ${idx} Var ${v}`] || mapping[`Variable: ${v}`] || mapping['url_suffix']] || '') };
-                if (isNaN(v)) param.parameter_name = v;
-                return param;
-              });
+              const params = btn.variables.map(v => ({
+                type: "text",
+                parameter_name: String(v),
+                text: String(contact[mapping[`btn_${idx}_${v}`] || mapping[`Btn ${idx} Var ${v}`] || mapping[`Variable: ${v}`] || mapping['url_suffix']] || '')
+              }));
               components.push({ type: "button", sub_type: "url", index: idx, parameters: params });
             }
           });
