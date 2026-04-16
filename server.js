@@ -351,7 +351,7 @@ app.post('/api/send', authenticateToken, async (req, res) => {
     return res.status(400).json({ error: 'WhatsApp Credentials not configured for your account' });
   }
 
-  const { contacts, messageType, templateName, templateParams, textBody, mapping } = req.body;
+  const { contacts, messageType, templateName, templateParams, customMessage, mapping } = req.body;
   const jobId = Date.now().toString();
 
   // Initialize user-specific job store if needed
@@ -395,9 +395,12 @@ app.post('/api/send', authenticateToken, async (req, res) => {
       if (cleanPhone.length === 10) cleanPhone = '91' + cleanPhone;
 
       let wamid = null;
+      let msgStatus = 'Pending';
+      let payload = { messaging_product: "whatsapp", recipient_type: "individual", to: '+' + cleanPhone };
+
       try {
         if (messageType === 'text') {
-          let text = textBody || '';
+          let text = customMessage || '';
           Object.keys(contact).forEach(k => text = text.replace(new RegExp(`{{\\s*${escapeRegExp(k)}\\s*}}`, 'gi'), contact[k] || ''));
           payload.type = "text";
           payload.text = { body: text };
@@ -426,7 +429,7 @@ app.post('/api/send', authenticateToken, async (req, res) => {
         phone: cleanPhone || phone || 'N/A',
         status: msgStatus,
         wamid: wamid,
-        details: messageType === 'template' ? payload.template : { text: textBody }
+        details: messageType === 'template' ? payload.template : { text: customMessage }
       });
       userJobs[jobId].processed += 1;
 
