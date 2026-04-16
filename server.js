@@ -74,7 +74,7 @@ app.use((req, res, next) => {
 
 // Global In-memory stores (Scoped to userId)
 let jobs = {};            // { userId: { jobId: { status, results, ... } } }
-let wamidToJob = {};      // { wamid: { jobId, phone } }
+let wamidToJob = {};      // { wamid: { jobId, phone, userId } }
 let sentHistory = {};     // { phone: { sentAt, jobId } } (Shared cache)
 let chats = {};           // In-memory cache for webhook: { phone: [...] }
 
@@ -394,9 +394,7 @@ app.post('/api/send', authenticateToken, async (req, res) => {
       let cleanPhone = phone.replace(/\D/g, '');
       if (cleanPhone.length === 10) cleanPhone = '91' + cleanPhone;
 
-      let msgStatus = 'Failed ❌';
-      let payload = { messaging_product: "whatsapp", recipient_type: "individual", to: '+' + cleanPhone };
-
+      let wamid = null;
       try {
         if (messageType === 'text') {
           let text = textBody || '';
@@ -413,11 +411,13 @@ app.post('/api/send', authenticateToken, async (req, res) => {
           headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}`, 'Content-Type': 'application/json' }
         });
         msgStatus = 'Sent ✅';
+        wamid = response.data.messages?.[0]?.id;
       } catch (err) {
         msgStatus = `Failed: ${err.message}`;
       }
 
-      if (msgStatus.includes('✅')) {
+      if (wamid) {
+        wamidToJob[wamid] = { jobId, phone: cleanPhone, userId };
         sentHistory[cleanPhone] = { sentAt: Date.now(), jobId };
       }
 
@@ -425,6 +425,7 @@ app.post('/api/send', authenticateToken, async (req, res) => {
         name: mapping.name ? contact[mapping.name] : 'Unknown',
         phone: cleanPhone || phone || 'N/A',
         status: msgStatus,
+        wamid: wamid,
         details: messageType === 'template' ? payload.template : { text: textBody }
       });
       userJobs[jobId].processed += 1;
@@ -440,7 +441,13 @@ app.post('/api/send', authenticateToken, async (req, res) => {
               status: finalJob.status,
               totalContacts: finalJob.total,
               sent: finalJob.results.filter(r => r.status.includes('✅')).length,
-              failed: finalJob.results.filter(r => r.status.includes('❌')).length
+              failed: finalJob.results.filter(r => r.status.includes('Failed')).length,
+              results: finalJob.results.map(r => ({
+                phone: r.phone,
+                name: r.name,
+                status: r.status,
+                wamid: r.wamid
+              }))
           });
           await campaign.save();
       }
@@ -455,10 +462,22 @@ app.post('/api/send', authenticateToken, async (req, res) => {
 // --- CAMPAIGN HISTORY (User Scoped) ---
 app.get('/api/history', authenticateToken, async (req, res) => {
   try {
-    const dbCampaigns = await Campaign.find({ userId: req.user.id }).sort({ timestamp: -1 });
+    // Exclude 'results' from the list view for performance
+    const dbCampaigns = await Campaign.find({ userId: req.user.id }, { results: 0 }).sort({ timestamp: -1 });
     res.json(dbCampaigns);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch history' });
+  }
+});
+
+// Get detailed results for a specific campaign
+app.get('/api/history/:id', authenticateToken, async (req, res) => {
+  try {
+    const campaign = await Campaign.findOne({ userId: req.user.id, id: req.params.id });
+    if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+    res.json(campaign);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch campaign details' });
   }
 });
 
@@ -467,8 +486,8 @@ app.post('/api/history/clear', authenticateToken, async (req, res) => {
   console.log('[CLEAR] Request received to wipe history for user', req.user.id);
   try {
     await Campaign.deleteMany({ userId: req.user.id });
+    // Also clear in-memory jobs for this user
     if (jobs[req.user.id]) delete jobs[req.user.id];
-    sentHistory = {};
     res.json({ message: 'History cleared' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to clear history' });
@@ -671,11 +690,12 @@ app.post('/webhook', async (req, res) => {
 
         // UPDATE JOB MEMORY
         if (wamidToJob[wamid]) {
-          const { jobId, phone } = wamidToJob[wamid];
-          if (jobs[jobId]) {
-            const result = jobs[jobId].results.find(r => r.phone === phone);
+          const { jobId, phone, userId } = wamidToJob[wamid];
+          const userJobs = jobs[userId] || {};
+          
+          if (userJobs[jobId]) {
+            const result = userJobs[jobId].results.find(r => r.phone === phone);
             if (result) {
-              // Map statuses to readable text with icons
               const statusMap = {
                 'sent': 'Sent ✅',
                 'delivered': 'Delivered 📩',
@@ -690,8 +710,13 @@ app.post('/webhook', async (req, res) => {
                 result.status = `Failed: ${err.message}`;
               }
               
-              
-              console.log(`[Webhook] Updated Job ${jobId} status for ${phone}`);
+              // Also update the database if the campaign is already saved
+              Campaign.findOneAndUpdate(
+                { userId: userId, id: parseInt(jobId.slice(-6)), "results.phone": phone },
+                { $set: { "results.$.status": result.status } }
+              ).catch(err => console.error('[Webhook] DB Sync Error:', err.message));
+
+              console.log(`[Webhook] Updated Job ${jobId} status for ${phone} to ${result.status}`);
             }
           }
         }

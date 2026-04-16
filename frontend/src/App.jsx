@@ -250,6 +250,20 @@ export default function App() {
   useEffect(() => { const t = setTimeout(() => setDebouncedSearch(searchTerm), 300); return () => clearTimeout(t); }, [searchTerm]);
   useEffect(() => { const t = setTimeout(() => setDebouncedHistorySearch(historySearchTerm), 300); return () => clearTimeout(t); }, [historySearchTerm]);
 
+  // FETCH CAMPAIGN DETAILS
+  const handleExpandHistory = async (job) => {
+    try {
+      if (job.results) { setExpandedHistoryJob(job); return; }
+      const res = await fetchWithAuth(`${API_BASE}/api/history/${job.id}`);
+      if (res.ok) {
+        const fullJob = await res.json();
+        setExpandedHistoryJob(fullJob);
+      }
+    } catch (e) {
+      console.error('Failed to fetch job details');
+    }
+  };
+
   // ═══════════ CORE FUNCTIONS ═══════════
   const handleRegisterPhone = async () => {
     if (!registrationPin || registrationPin.length !== 6) { setStatus('Please enter a 6-digit PIN.'); return; }
@@ -794,7 +808,7 @@ export default function App() {
                            const total = job.totalContacts || job.total || 0;
                            const rate = total > 0 ? (sent / total * 100).toFixed(0) : 0;
                            return (
-                             <div key={job.id || job._id} onClick={() => setExpandedHistoryJob(job)} className="simple-card group cursor-pointer hover:border-emerald-500/20 transition-all">
+                             <div key={job.id || job._id} onClick={() => handleExpandHistory(job)} className="simple-card group cursor-pointer hover:border-emerald-500/20 transition-all">
                                 <div className="flex justify-between items-start mb-4">
                                    <div className="p-2.5 bg-white/5 rounded-xl text-slate-500 group-hover:text-emerald-500 transition-colors"><Database size={18} /></div>
                                    <div className="text-right">

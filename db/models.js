@@ -43,6 +43,14 @@ const CampaignSchema = new mongoose.Schema({
     totalContacts: { type: Number, default: 0 },
     sent: { type: Number, default: 0 },
     failed: { type: Number, default: 0 },
+    results: [{
+        phone: String,
+        name: String,
+        status: String,
+        error: String,
+        wamid: String,
+        timestamp: { type: Date, default: Date.now }
+    }],
     timestamp: { type: Date, default: Date.now }
 }, { timestamps: true });
 
