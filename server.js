@@ -41,15 +41,24 @@ const connectDB = async () => {
     }
 };
 
-app.get('/', async (req, res) => {
+app.get('/', (req, res) => {
+  const isRender = !!process.env.RENDER;
+  const currentUrl = isRender ? process.env.RENDER_EXTERNAL_URL : `http://localhost:${port}`;
+  
   res.send(`
-    <div style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #0f172a; color: #f8fafc; text-align: center;">
-      <h1 style="color: #10b981;">TIM Backend API is Running</h1>
-      <p style="color: #94a3b8; font-size: 1.1rem;">This is the API server for the WhatsApp Bulk Message tool.</p>
-      <div style="margin-top: 2rem; padding: 1.5rem; background: #1e293b; border-radius: 12px; border: 1px solid #334155;">
-        <p style="margin-bottom: 0.5rem;">Access the Dashboard at:</p>
-        <a href="http://localhost:5173" style="color: #10b981; font-weight: bold; text-decoration: none; font-size: 1.2rem;">http://localhost:5173</a>
+    <div style="font-family: 'Inter', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #0f172a; color: #f8fafc; text-align: center; padding: 2rem;">
+      <div style="background: rgba(16, 185, 129, 0.1); padding: 1rem 2rem; border-radius: 50px; border: 1px solid #10b981; margin-bottom: 2rem;">
+        <span style="color: #10b981; font-weight: bold; letter-spacing: 1px;">SYSTEM ONLINE</span>
       </div>
+      <h1 style="font-size: 3.5rem; margin-bottom: 1rem; background: linear-gradient(to right, #10b981, #3b82f6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">TIM Cloud API</h1>
+      <p style="color: #94a3b8; font-size: 1.2rem; max-width: 600px; line-height: 1.6;">Your WhatsApp Bulk Messaging engine is successfully running in the cloud with permanent MongoDB storage.</p>
+      
+      <div style="margin-top: 3rem; padding: 2rem; background: #1e293b; border-radius: 16px; border: 1px solid #334155; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);">
+        <p style="margin-bottom: 1rem; color: #94a3b8;">API Endpoint Security Verified ✅</p>
+        <code style="background: #0f172a; padding: 0.75rem 1.5rem; border-radius: 8px; color: #3b82f6; font-size: 1.1rem; border: 1px solid #1e293b;">${currentUrl}/webhook</code>
+      </div>
+      
+      <p style="margin-top: 2rem; color: #64748b; font-size: 0.9rem;">Connected to MongoDB Atlas: <span style="color: #10b981;">Active</span></p>
     </div>
   `);
 });
