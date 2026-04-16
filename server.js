@@ -386,6 +386,62 @@ app.post('/api/send', authenticateToken, async (req, res) => {
       template = templates.find(t => t.name === templateName);
     }
 
+    // ═══ AUTO-DOWNLOAD TEMPLATE HEADER MEDIA ═══
+    // If template has an IMAGE/VIDEO/DOCUMENT header, automatically download 
+    // from Meta CDN and upload to get a Media ID (prevents Portuguese placeholder text)
+    let cachedHeaderMediaId = mapping.header_media_url || null;
+    if (template && template.componentsData.header.type && 
+        ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.componentsData.header.type)) {
+      
+      const header = template.componentsData.header;
+      
+      // If user already uploaded a file (media ID set), use that
+      if (cachedHeaderMediaId && !String(cachedHeaderMediaId).startsWith('http')) {
+        console.log(`[MEDIA] Using user-uploaded media ID: ${cachedHeaderMediaId}`);
+      } 
+      // Otherwise, auto-download from template's example image
+      else if (header.imageUrl) {
+        try {
+          console.log(`[MEDIA] Downloading template ${header.type} from Meta CDN...`);
+          const mediaResponse = await axios.get(header.imageUrl, { responseType: 'arraybuffer' });
+          const mediaBuffer = Buffer.from(mediaResponse.data);
+          
+          const contentType = mediaResponse.headers['content-type'] || 'application/octet-stream';
+          const extension = mime.extension(contentType) || 'bin';
+          const uploadsDir = path.join(__dirname, 'uploads');
+          if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+          const tmpPath = path.join(uploadsDir, `header_${Date.now()}.${extension}`);
+          
+          fs.writeFileSync(tmpPath, mediaBuffer);
+          console.log(`[MEDIA] ${header.type} downloaded (${mediaBuffer.length} bytes), uploading to Meta...`);
+
+          const formData = new FormData();
+          formData.append('messaging_product', 'whatsapp');
+          formData.append('file', fs.createReadStream(tmpPath), { 
+            filename: `header.${extension}`, 
+            contentType: contentType 
+          });
+
+          const uploadRes = await axios.post(
+            `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/media`,
+            formData,
+            { headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}`, ...formData.getHeaders() } }
+          );
+          
+          cachedHeaderMediaId = uploadRes.data.id;
+          console.log(`[MEDIA] Upload success! media_id = ${cachedHeaderMediaId}`);
+          
+          try { fs.unlinkSync(tmpPath); } catch(e) {}
+        } catch (uploadErr) {
+          console.error(`[MEDIA] ${header.type} auto-download failed:`, uploadErr.response?.data || uploadErr.message);
+          cachedHeaderMediaId = null;
+        }
+      } else {
+        console.warn(`[MEDIA] No example image URL in template and no file uploaded — header will be missing`);
+        cachedHeaderMediaId = null;
+      }
+    }
+
     for (let contact of validContacts) {
       if (userJobs[jobId].stopped) break;
 
@@ -429,28 +485,19 @@ app.post('/api/send', authenticateToken, async (req, res) => {
           if (template.componentsData.header.type) {
             const hType = template.componentsData.header.type;
             if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(hType)) {
-              // Only use uploaded media ID (no CSV URL columns)
-              let finalMediaVal = mapping.header_media_url || null;
-
-              // Fallback to template example image if nothing uploaded
-              if (!finalMediaVal && template.componentsData.header.imageUrl) {
-                finalMediaVal = template.componentsData.header.imageUrl;
-                console.log(`[HEADER] Using template example image as fallback`);
-              }
-
-              if (finalMediaVal) {
-                const isUrl = String(finalMediaVal).startsWith('http');
-                console.log(`[HEADER] Sending ${hType}: ${isUrl ? 'URL' : 'Media ID'}`);
+              // Use the pre-cached media ID (user-uploaded or auto-downloaded)
+              if (cachedHeaderMediaId) {
+                const typeLower = hType.toLowerCase();
+                const isUrl = String(cachedHeaderMediaId).startsWith('http');
                 components.push({
                   type: "header",
                   parameters: [{ 
-                    type: hType.toLowerCase(), 
-                    [hType.toLowerCase()]: isUrl ? { link: finalMediaVal } : { id: finalMediaVal } 
+                    type: typeLower, 
+                    [typeLower]: isUrl ? { link: cachedHeaderMediaId } : { id: cachedHeaderMediaId } 
                   }]
                 });
-              } else {
-                console.warn(`[HEADER WARN] No media uploaded for ${hType} header — skipping`);
               }
+              // If no media ID at all, DON'T push a header — this prevents the Portuguese text
             } else if (template.componentsData.header.variables.length > 0) {
               const params = template.componentsData.header.variables.map(v => ({
                 type: "text",
