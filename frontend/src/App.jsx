@@ -36,7 +36,10 @@ function cn(...inputs) {
   return twMerge(clsx(inputs));
 }
 
-const API_BASE = 'http://127.0.0.1:3001';
+// Auto-detect API URL: Use relative path in production (Render), but fallback to localhost for development
+const API_BASE = window.location.hostname === 'localhost' && window.location.port === '5173' 
+  ? 'http://localhost:3001' 
+  : '';
 
 const PAGE_TRANSITION = {
   initial: { opacity: 0, x: 5 },
