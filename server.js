@@ -185,32 +185,39 @@ const getMetaTemplatesForUser = async (wabaId, accessToken) => {
               componentsData.header.imageUrl = comp.example.header_handle[0];
             }
           }
-          const vars = comp.text?.match(/{{([0-9]+)}}/g)?.map(m => m.replace(/[{}]/g, '')) || [];
-          vars.forEach(v => {
-            if (!componentsData.header.variables.includes(v)) {
-              componentsData.header.variables.push(v);
-              componentsData.header.portalNames.push(`Header Var ${v}`);
-            }
+          const vars = comp.text?.match(/{{([a-zA-Z0-9_]+)}}/g)?.map(m => m.replace(/[{}]/g, '')) || [];
+          // Sort numerically if they are numbers
+          const uniqueVars = [...new Set(vars)].sort((a, b) => {
+            if (!isNaN(a) && !isNaN(b)) return parseInt(a) - parseInt(b);
+            return a.localeCompare(b);
+          });
+          uniqueVars.forEach(v => {
+            componentsData.header.variables.push(v);
+            componentsData.header.portalNames.push(`Header Var ${v}`);
           });
         }
 
         if (comp.type === 'BODY') {
-          const vars = comp.text?.match(/{{([0-9]+)}}/g)?.map(m => m.replace(/[{}]/g, '')) || [];
-          vars.forEach(v => {
-            if (!componentsData.body.variables.includes(v)) {
-              componentsData.body.variables.push(v);
-              componentsData.body.portalNames.push(`Body Var ${v}`);
-            }
+          const vars = comp.text?.match(/{{([a-zA-Z0-9_]+)}}/g)?.map(m => m.replace(/[{}]/g, '')) || [];
+          const uniqueVars = [...new Set(vars)].sort((a, b) => {
+            if (!isNaN(a) && !isNaN(b)) return parseInt(a) - parseInt(b);
+            return a.localeCompare(b);
+          });
+          uniqueVars.forEach(v => {
+            componentsData.body.variables.push(v);
+            componentsData.body.portalNames.push(`Body Var ${v}`);
           });
         }
 
         if (comp.type === 'FOOTER') {
-          const vars = comp.text?.match(/{{([0-9]+)}}/g)?.map(m => m.replace(/[{}]/g, '')) || [];
-          vars.forEach(v => {
-            if (!componentsData.footer.variables.includes(v)) {
-              componentsData.footer.variables.push(v);
-              componentsData.footer.portalNames.push(`Footer Var ${v}`);
-            }
+          const vars = comp.text?.match(/{{([a-zA-Z0-9_]+)}}/g)?.map(m => m.replace(/[{}]/g, '')) || [];
+          const uniqueVars = [...new Set(vars)].sort((a, b) => {
+            if (!isNaN(a) && !isNaN(b)) return parseInt(a) - parseInt(b);
+            return a.localeCompare(b);
+          });
+          uniqueVars.forEach(v => {
+            componentsData.footer.variables.push(v);
+            componentsData.footer.portalNames.push(`Footer Var ${v}`);
           });
         }
 
@@ -218,9 +225,12 @@ const getMetaTemplatesForUser = async (wabaId, accessToken) => {
           comp.buttons.forEach((btn, idx) => {
             const btnData = { type: btn.type, text: btn.text, index: idx, variables: [], portalNames: [] };
             if (btn.type === 'URL' && btn.url) {
-              const matches = btn.url.match(/{{([0-9]+)}}/g) || [];
-              matches.forEach(m => {
-                const v = m.replace(/[{}]/g, '');
+              const matches = btn.url.match(/{{([a-zA-Z0-9_]+)}}/g) || [];
+              const uniqueMatches = [...new Set(matches.map(m => m.replace(/[{}]/g, '')))].sort((a, b) => {
+                if (!isNaN(a) && !isNaN(b)) return parseInt(a) - parseInt(b);
+                return a.localeCompare(b);
+              });
+              uniqueMatches.forEach(v => {
                 btnData.variables.push(v);
                 btnData.portalNames.push(`Btn ${idx} Var ${v}`);
               });
