@@ -75,7 +75,7 @@ app.use((req, res, next) => {
 let jobs = {};            // { userId: { jobId: { status, results, ... } } }
 let wamidToJob = {};      // { wamid: { jobId, phone, userId } }
 let sentHistory = {};     // { phone: { sentAt, jobId } } (Shared cache)
-let chats = {};           // In-memory cache for webhook: { phone: [...] }
+// Persistent storage is handled by MongoDB via the Chat Schema
 
 // Helper: find a job by jobId across all users
 const findJob = (jobId) => {
@@ -728,6 +728,28 @@ app.post('/api/send', authenticateToken, async (req, res) => {
       });
       userJobs[jobId].processed += 1;
 
+      // Track outbound message in individual Chat history
+      try {
+          const outboundMsg = {
+              id: wamid || `bulk_${Date.now()}`,
+              from: 'me',
+              name: cleanPhone,
+              text: messageType === 'template' ? `[Sent Template: ${template.name}]` : (customMessage || ''),
+              timestamp: Date.now(),
+              type: messageType
+          };
+          await Chat.findOneAndUpdate(
+              { userId: userId, phone: cleanPhone },
+              { 
+                  $push: { messages: outboundMsg },
+                  $set: { updatedAt: Date.now() }
+              },
+              { upsert: true }
+          ).catch(e => console.warn('[DB] Outbound sync skip:', e.message));
+      } catch (trackErr) {
+          console.error('[DB] Failed to track matching message in inbox');
+      }
+
       // Persistence to MongoDB (Scoped to User)
       if (userJobs[jobId].processed === userJobs[jobId].total) {
           userJobs[jobId].status = 'Completed';
@@ -1063,9 +1085,43 @@ app.post('/webhook', async (req, res) => {
         if (!profileName) profileName = from; // Fallback to phone number
         
         let text = '[Non-text message]';
-        if (msg.type === 'text') text = msg.text.body;
-        else if (msg.type === 'button') text = msg.button.text;
-        else if (msg.type === 'interactive') text = msg.interactive.button_reply?.title || msg.interactive.list_reply?.title || '[Interactive]';
+        const msgType = msg.type;
+        
+        switch (msgType) {
+            case 'text':
+                text = msg.text?.body || '';
+                break;
+            case 'image':
+                text = msg.image?.caption || '📷 Image';
+                break;
+            case 'video':
+                text = msg.video?.caption || '🎥 Video';
+                break;
+            case 'document':
+                text = msg.document?.filename || '📄 Document';
+                break;
+            case 'audio':
+                text = '🔊 Audio message';
+                break;
+            case 'sticker':
+                text = '🏷️ Sticker';
+                break;
+            case 'location':
+                text = '📍 Location';
+                break;
+            case 'button':
+                // For template button replies, Meta sends button.text
+                text = msg.button?.text || 'Interactive Reply';
+                break;
+            case 'interactive':
+                // For interactive buttons or list clicks
+                text = msg.interactive?.button_reply?.title || 
+                       msg.interactive?.list_reply?.title || 
+                       '[Interactive]';
+                break;
+            default:
+                text = `[${msgType} message]`;
+        }
         
         console.log(`[Webhook] Message from ${from} (${profileName}): ${text}`);
         
@@ -1077,10 +1133,6 @@ app.post('/webhook', async (req, res) => {
           timestamp: Date.now(),
           type: msg.type
         };
-
-        if (!chats[from]) chats[from] = [];
-        chats[from].push(newMsg);
-        if (chats[from].length > 100) chats[from].shift();
 
         // PERSIST TO CLOUD (Scoped to User)
         try {
@@ -1143,7 +1195,7 @@ app.post('/api/chats/:phone/read', authenticateToken, async (req, res) => {
 });
 
 app.post('/api/reply', authenticateToken, async (req, res) => {
-  const { phone, text, type = 'text', mediaId } = req.body;
+  const { phone, text, type = 'text', mediaId, filename } = req.body;
   const userId = req.user.id;
   const user = await User.findById(userId);
 
@@ -1170,7 +1222,7 @@ app.post('/api/reply', authenticateToken, async (req, res) => {
     } else if (type === 'video') {
       payload.video = { id: mediaId, caption: text };
     } else if (type === 'document') {
-      payload.document = { id: mediaId, caption: text, filename: "Attachment" };
+      payload.document = { id: mediaId, caption: text, filename: filename || "Attachment" };
     }
     
     console.log(`[REPLY] Sending ${type} to ${phone}`);

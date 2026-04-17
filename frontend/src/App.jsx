@@ -27,7 +27,10 @@ import {
   ShieldCheck,
   ArrowLeft,
   ChatCircleDots,
-  Paperclip
+  Paperclip,
+  ImageSquare,
+  VideoCamera,
+  FileText
 } from "@phosphor-icons/react";
 import { motion, AnimatePresence } from 'framer-motion';
 import { clsx } from 'clsx';
@@ -97,6 +100,7 @@ export default function App() {
   const [activeChatHistory, setActiveChatHistory] = useState([]);
   const [replyText, setReplyText] = useState('');
   const [isSendingReply, setIsSendingReply] = useState(false);
+  const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
 
   // ═══════════ AUTH FUNCTIONS ═══════════
   const handleAuth = async (e) => {
@@ -203,6 +207,30 @@ export default function App() {
     const interval = setInterval(fetchHistory, 3000);
     return () => clearInterval(interval);
   }, [token, activeTab, activeChatPhone]);
+
+  // UNREAD NOTIFICATIONS SYNC
+  const unreadTotal = useMemo(() => chats.reduce((acc, c) => acc + (c.unreadCount || 0), 0), [chats]);
+
+  useEffect(() => {
+    if (unreadTotal > 0) {
+      document.title = `(${unreadTotal}) TIM Cloud`;
+    } else {
+      document.title = 'TIM Cloud';
+    }
+  }, [unreadTotal]);
+
+  // AUTO-READ ACTIVE CHAT
+  useEffect(() => {
+    if (!token || !activeChatPhone) return;
+    const activeChat = chats.find(c => c.phone === activeChatPhone);
+    if (activeChat && activeChat.unreadCount > 0) {
+      fetchWithAuth(`${API_BASE}/api/chats/${activeChatPhone}/read`, { method: 'POST' })
+        .then(() => {
+          setChats(prev => prev.map(c => c.phone === activeChatPhone ? { ...c, unreadCount: 0 } : c));
+        })
+        .catch(() => {});
+    }
+  }, [chats, activeChatPhone, token]);
 
   // ═══════════ STATS ═══════════
   const stats = useMemo(() => {
@@ -424,6 +452,41 @@ export default function App() {
     finally { setIsSendingReply(false); }
   };
 
+  const handleInboxMediaUpload = async (file, type) => {
+    if (!activeChatPhone || !file || isSendingReply) return;
+    setIsSendingReply(true);
+    setShowAttachmentMenu(false);
+    try {
+      const formData = new FormData();
+      formData.append('media', file);
+      const upRes = await fetchWithAuth(`${API_BASE}/api/upload-media`, { method: 'POST', body: formData });
+      const upData = await upRes.json();
+      if (upData.mediaId) {
+        await fetchWithAuth(`${API_BASE}/api/reply`, { 
+          method: 'POST', 
+          headers: {'Content-Type': 'application/json'}, 
+          body: JSON.stringify({ 
+            phone: activeChatPhone, 
+            type: type, 
+            mediaId: upData.mediaId, 
+            text: file.name,
+            filename: file.name // Specifically for documents
+          }) 
+        });
+        // Success: Refresh history
+        const hr = await fetchWithAuth(`${API_BASE}/api/chats/${activeChatPhone}`);
+        const hd = await hr.json();
+        if (Array.isArray(hd)) setActiveChatHistory(hd);
+      } else {
+        alert(`Upload failed: ${upData.error || 'Check Meta settings'}`);
+      }
+    } catch (err) {
+      alert('Network error during media upload');
+    } finally {
+      setIsSendingReply(false);
+    }
+  };
+
   function downloadBlob(content, filename) {
     const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -492,7 +555,7 @@ export default function App() {
           <SidebarLink active={activeTab === 'home'} onClick={() => switchTab('home')} icon={House} label="Home" />
           <SidebarLink active={activeTab === 'send'} onClick={() => switchTab('send')} icon={PaperPlaneTilt} label="Send" />
           <SidebarLink active={activeTab === 'status'} onClick={() => switchTab('status')} icon={ChartLine} label="Status" badge={jobStatus?.status === 'Running' ? '●' : null} />
-          <SidebarLink active={activeTab === 'inbox'} onClick={() => switchTab('inbox')} icon={ChatCircleDots} label="Inbox" />
+          <SidebarLink active={activeTab === 'inbox'} onClick={() => switchTab('inbox')} icon={ChatCircleDots} label="Inbox" badge={unreadTotal > 0 ? unreadTotal : null} />
           <SidebarLink active={activeTab === 'history'} onClick={() => switchTab('history')} icon={Clock} label="History" badge={historyData.length > 0 ? historyData.length : null} />
           <div className="pt-4 border-t border-border-dim mt-4 opacity-50" />
           <SidebarLink active={activeTab === 'settings'} onClick={() => switchTab('settings')} icon={Gear} label="Settings" />
@@ -1005,7 +1068,10 @@ export default function App() {
                                   </div>
                                   {chat.updatedAt && <span className="text-[9px] font-bold text-slate-600 shrink-0">{new Date(chat.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
                                </div>
-                               <p className="text-[10px] text-slate-500 truncate pr-4">{chat.messages?.[chat.messages.length-1]?.text || '...'}</p>
+                               <p className="text-[10px] text-slate-500 truncate pr-4">
+                                 {chat.messages?.[chat.messages.length - 1]?.from === 'me' ? '✓ ' : ''}
+                                 {chat.messages?.[chat.messages.length - 1]?.text || 'No messages'}
+                               </p>
                                {activeChatPhone === chat.phone && <div className="absolute right-3 top-1/2 -translate-y-1/2 w-1 h-8 bg-emerald-500 rounded-full" />}
                             </button>
                          )) : (
@@ -1042,39 +1108,47 @@ export default function App() {
                                   </div>
                                ))}
                             </div>
-                            <form onSubmit={handleSendReply} className="p-4 lg:p-6 bg-white/[0.01] border-t border-border-dim space-y-3">
-                               <div className="flex items-center gap-2">
-                                  <label className="p-2.5 rounded-xl bg-white/5 border border-border-dim text-slate-400 hover:text-emerald-500 transition-all cursor-pointer">
-                                     <Paperclip size={18} />
-                                     <input type="file" className="hidden" onChange={async (e) => {
-                                        const f = e.target.files[0];
-                                        if(!f) return;
-                                        // Auto-send media
-                                        const formData = new FormData();
-                                        formData.append('media', f);
-                                        const typeMap = { 'image': 'image', 'video': 'video', 'pdf': 'document', 'msword': 'document' };
-                                        let type = 'document';
-                                        Object.keys(typeMap).forEach(key => { if(f.type.includes(key)) type = typeMap[key]; });
+                            <form onSubmit={handleSendReply} className="p-4 lg:p-6 bg-white/[0.01] border-t border-border-dim space-y-3 relative">
+                               <AnimatePresence>
+                                  {showAttachmentMenu && (
+                                     <motion.div 
+                                       initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                                       animate={{ opacity: 1, scale: 1, y: 0 }}
+                                       exit={{ opacity: 0, scale: 0.9, y: 10 }}
+                                       className="absolute bottom-full left-6 mb-4 bg-bg-surface border border-border-dim rounded-2xl shadow-2xl p-2 flex flex-col gap-1 z-50 min-w-[140px]"
+                                     >
+                                        <button type="button" onClick={() => document.getElementById('inbox-img').click()} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-slate-300 hover:text-emerald-500 transition-all text-xs font-bold">
+                                           <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-500"><ImageSquare size={18} /></div>
+                                           Image
+                                        </button>
+                                        <button type="button" onClick={() => document.getElementById('inbox-vid').click()} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-slate-300 hover:text-emerald-500 transition-all text-xs font-bold">
+                                           <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500"><VideoCamera size={18} /></div>
+                                           Video
+                                        </button>
+                                        <button type="button" onClick={() => document.getElementById('inbox-doc').click()} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-slate-300 hover:text-emerald-500 transition-all text-xs font-bold">
+                                           <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-500"><FileText size={18} /></div>
+                                           Document
+                                        </button>
 
-                                        setIsSendingReply(true);
-                                        try {
-                                           const upRes = await fetchWithAuth(`${API_BASE}/api/upload-media`, { method: 'POST', body: formData });
-                                           const upData = await upRes.json();
-                                           if (upData.mediaId) {
-                                              await fetchWithAuth(`${API_BASE}/api/reply`, { 
-                                                 method: 'POST', 
-                                                 headers: {'Content-Type': 'application/json'}, 
-                                                 body: JSON.stringify({ phone: activeChatPhone, type: type, mediaId: upData.mediaId, text: f.name }) 
-                                              });
-                                              // Refresh
-                                              const hr = await fetchWithAuth(`${API_BASE}/api/chats/${activeChatPhone}`);
-                                              const hd = await hr.json();
-                                              if (Array.isArray(hd)) setActiveChatHistory(hd);
-                                           }
-                                        } catch(err) { alert('Media upload failed'); } finally { setIsSendingReply(false); }
-                                     }} />
-                                  </label>
-                                  <textarea value={replyText} onChange={e => setReplyText(e.target.value)} placeholder="Type a message..." className="flex-1 bg-bg-base border border-border-dim rounded-2xl p-3 lg:p-4 text-[13px] font-medium text-white outline-none focus:border-emerald-500/30 resize-none min-h-[48px] max-h-32 transition-all" onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendReply(e); } }} />
+                                        <input id="inbox-img" type="file" className="hidden" accept="image/*" onChange={(e) => handleInboxMediaUpload(e.target.files[0], 'image')} />
+                                        <input id="inbox-vid" type="file" className="hidden" accept="video/*" onChange={(e) => handleInboxMediaUpload(e.target.files[0], 'video')} />
+                                        <input id="inbox-doc" type="file" className="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx" onChange={(e) => handleInboxMediaUpload(e.target.files[0], 'document')} />
+                                     </motion.div>
+                                  )}
+                               </AnimatePresence>
+
+                               <div className="flex items-center gap-2">
+                                  <button 
+                                    type="button" 
+                                    onClick={() => setShowAttachmentMenu(!showAttachmentMenu)}
+                                    className={cn(
+                                       "p-2.5 rounded-xl border transition-all",
+                                       showAttachmentMenu ? "bg-emerald-500 text-black border-emerald-500 shadow-lg shadow-emerald-500/20" : "bg-white/5 border-border-dim text-slate-400 hover:text-emerald-500"
+                                    )}
+                                  >
+                                     <Paperclip size={18} weight={showAttachmentMenu ? "bold" : "regular"} />
+                                  </button>
+                                  <textarea value={replyText} onChange={e => { setReplyText(e.target.value); if(showAttachmentMenu) setShowAttachmentMenu(false); }} placeholder="Type a message..." className="flex-1 bg-bg-base border border-border-dim rounded-2xl p-3 lg:p-4 text-[13px] font-medium text-white outline-none focus:border-emerald-500/30 resize-none min-h-[48px] max-h-32 transition-all" onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendReply(e); } }} />
                                   <button type="submit" disabled={!replyText.trim() || isSendingReply} className="h-12 w-12 lg:h-14 lg:w-14 flex items-center justify-center bg-emerald-500 text-black rounded-2xl transition-all shadow-lg shadow-emerald-500/10 disabled:opacity-50">
                                      {isSendingReply ? <ArrowsClockwise size={18} className="animate-spin" /> : <PaperPlaneTilt size={20} weight="bold" />}
                                   </button>
