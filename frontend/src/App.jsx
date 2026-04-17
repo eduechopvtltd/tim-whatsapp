@@ -26,7 +26,8 @@ import {
   EyeSlash,
   ShieldCheck,
   ArrowLeft,
-  ChatCircleDots
+  ChatCircleDots,
+  Paperclip
 } from "@phosphor-icons/react";
 import { motion, AnimatePresence } from 'framer-motion';
 import { clsx } from 'clsx';
@@ -517,7 +518,7 @@ export default function App() {
       <main className="flex-1 flex flex-col relative overflow-hidden w-full min-w-0">
         <div className="absolute top-0 right-0 w-[600px] h-[600px] emerald-radial pointer-events-none -z-10" />
 
-        <header className="h-16 lg:h-20 flex items-center justify-between px-6 lg:px-10 border-b border-border-dim shrink-0 bg-bg-base/50 backdrop-blur-md sticky top-0 z-30">
+        <header className="h-16 lg:h-20 flex items-center justify-between px-4 lg:px-10 border-b border-border-dim shrink-0 bg-bg-base/50 backdrop-blur-md sticky top-0 z-30">
            <div className="flex items-center gap-4">
              <button className="lg:hidden p-2 -ml-2 text-slate-400 hover:text-white bg-white/5 rounded-lg border border-border-dim transition-all" onClick={() => setSidebarOpen(true)}><List size={20} weight="bold" /></button>
              <h2 className="text-lg lg:text-xl font-bold tracking-tight">{TAB_TITLES[activeTab]}</h2>
@@ -537,7 +538,7 @@ export default function App() {
            </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-6 lg:p-10">
+        <div className="flex-1 overflow-y-auto p-4 lg:p-10">
            <AnimatePresence mode="wait">
 
               {/* ═══ HOME TAB ═══ */}
@@ -763,8 +764,8 @@ export default function App() {
                    </div>
 
                    {/* RIGHT COLUMN: PREVIEW (STICKY) */}
-                   <div className="w-full lg:w-[350px] shrink-0">
-                      <div className="sticky top-24 space-y-4">
+                    <div className="w-full lg:w-[350px] shrink-0 flex flex-col items-center lg:items-stretch">
+                       <div className="relative lg:sticky lg:top-24 space-y-4 w-full max-w-[350px]">
                          <div className="flex items-center justify-between px-2">
                             <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Live Preview</h3>
                             <div className="flex items-center gap-2">
@@ -975,18 +976,33 @@ export default function App() {
 
               {/* ═══ INBOX TAB ═══ */}
               {activeTab === 'inbox' && (
-                <motion.div key="inbox" {...PAGE_TRANSITION} className="h-[calc(100vh-12rem)] flex gap-6">
-                   <div className="w-80 flex flex-col gap-4 shrink-0">
+                <motion.div key="inbox" {...PAGE_TRANSITION} className="h-[calc(100vh-12rem)] flex gap-4 lg:gap-6 relative">
+                   <div className={cn(
+                      "w-full lg:w-80 flex flex-col gap-4 shrink-0 transition-all duration-300",
+                      activeChatPhone ? "hidden lg:flex" : "flex"
+                   )}>
                       <div className="relative">
                          <MagnifyingGlass size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" />
                          <input placeholder="Search conversations..." className="w-full bg-white/[0.02] border border-border-dim rounded-xl pl-10 pr-4 py-3 text-xs font-medium text-white outline-none focus:border-emerald-500/20 placeholder:text-slate-700" />
                       </div>
                       <div className="flex-1 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
                          {chats.length > 0 ? chats.map(chat => (
-                            <button key={chat.phone} onClick={() => { setActiveChatPhone(chat.phone); setActiveChatHistory([]); }}
+                            <button key={chat.phone} onClick={async () => { 
+                               setActiveChatPhone(chat.phone); 
+                               setActiveChatHistory([]);
+                               // Mark as read
+                               try { fetchWithAuth(`${API_BASE}/api/chats/${chat.phone}/read`, { method: 'POST' }); } catch(e){}
+                               // Update local state for badge
+                               setChats(prev => prev.map(c => c.phone === chat.phone ? { ...c, unreadCount: 0 } : c));
+                            }}
                               className={cn("w-full text-left p-4 rounded-2xl border transition-all group relative", activeChatPhone === chat.phone ? "bg-emerald-500/10 border-emerald-500/30 shadow-lg shadow-emerald-500/5" : "bg-white/[0.01] border-border-dim hover:bg-white/[0.03] hover:border-emerald-500/10")}>
                                <div className="flex justify-between items-start mb-1">
-                                  <span className={cn("text-xs font-bold transition-colors truncate pr-2", activeChatPhone === chat.phone ? "text-emerald-500" : "text-white")}>{chat.name || chat.phone}</span>
+                                  <div className="flex items-center gap-2 min-w-0">
+                                     <span className={cn("text-xs font-bold transition-colors truncate", activeChatPhone === chat.phone ? "text-emerald-500" : "text-white")}>{chat.name || chat.phone}</span>
+                                     {chat.unreadCount > 0 && (
+                                        <span className="bg-emerald-500 text-black text-[9px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center shadow-lg shadow-emerald-500/20">{chat.unreadCount}</span>
+                                     )}
+                                  </div>
                                   {chat.updatedAt && <span className="text-[9px] font-bold text-slate-600 shrink-0">{new Date(chat.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
                                </div>
                                <p className="text-[10px] text-slate-500 truncate pr-4">{chat.messages?.[chat.messages.length-1]?.text || '...'}</p>
@@ -998,11 +1014,15 @@ export default function App() {
                       </div>
                    </div>
 
-                   <div className="flex-1 flex flex-col bg-bg-surface/50 border border-border-dim rounded-[2rem] overflow-hidden relative min-w-0">
+                   <div className={cn(
+                      "flex-1 flex flex-col bg-bg-surface/50 border border-border-dim rounded-[2rem] overflow-hidden relative min-w-0 transition-all duration-300",
+                      !activeChatPhone ? "hidden lg:flex" : "flex"
+                   )}>
                       {activeChatPhone ? (
                          <>
                             <div className="p-4 lg:p-6 border-b border-border-dim flex items-center justify-between bg-white/[0.01]">
                                <div className="flex items-center gap-3">
+                                  <button onClick={() => setActiveChatPhone(null)} className="lg:hidden p-2 -ml-2 text-slate-400 hover:text-white"><ArrowLeft size={20} weight="bold" /></button>
                                   <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 border border-emerald-500/20 font-bold text-sm">
                                      {(chats.find(c => c.phone === activeChatPhone)?.name || 'C').charAt(0).toUpperCase()}
                                   </div>
@@ -1012,19 +1032,51 @@ export default function App() {
                                   </div>
                                </div>
                             </div>
-                            <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar flex flex-col">
+                            <div className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-4 custom-scrollbar flex flex-col">
                                {activeChatHistory.map((msg, i) => (
-                                  <div key={i} className={cn("max-w-[80%] flex flex-col", msg.from === 'me' ? "self-end items-end" : "self-start items-start")}>
-                                     <div className={cn("px-4 py-3 rounded-2xl text-xs font-medium leading-relaxed shadow-sm whitespace-pre-wrap break-words", msg.from === 'me' ? "bg-emerald-500 text-black rounded-tr-none" : "bg-white/5 text-slate-200 border border-border-dim rounded-tl-none")}>{msg.text}</div>
+                                  <div key={i} className={cn("max-w-[85%] sm:max-w-[70%] flex flex-col", msg.from === 'me' ? "self-end items-end" : "self-start items-start")}>
+                                     <div className={cn("px-4 py-3 rounded-2xl text-[13px] font-medium leading-relaxed shadow-sm whitespace-pre-wrap break-words", msg.from === 'me' ? "bg-emerald-500 text-black rounded-tr-none" : "bg-white/5 text-slate-200 border border-border-dim rounded-tl-none")}>
+                                        {msg.text}
+                                     </div>
                                      <span className="text-[8px] font-bold text-slate-600 mt-1.5 uppercase tracking-widest px-1">{msg.timestamp ? new Date(parseInt(msg.timestamp)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
                                   </div>
                                ))}
                             </div>
-                            <form onSubmit={handleSendReply} className="p-4 lg:p-6 bg-white/[0.01] border-t border-border-dim">
-                               <div className="relative flex items-end gap-3">
-                                  <textarea value={replyText} onChange={e => setReplyText(e.target.value)} placeholder="Type your reply..." className="flex-1 bg-bg-base border border-border-dim rounded-2xl p-4 text-xs font-medium text-white outline-none focus:border-emerald-500/30 resize-none min-h-[56px] max-h-32 transition-all" onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendReply(e); } }} />
-                                  <button type="submit" disabled={!replyText.trim() || isSendingReply} className="h-14 px-6 bg-emerald-500 text-black rounded-2xl font-bold text-xs uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all shadow-lg shadow-emerald-500/10 disabled:opacity-50 disabled:hover:scale-100">
-                                     {isSendingReply ? <ArrowsClockwise size={18} className="animate-spin" /> : <PaperPlaneTilt size={18} weight="bold" />}
+                            <form onSubmit={handleSendReply} className="p-4 lg:p-6 bg-white/[0.01] border-t border-border-dim space-y-3">
+                               <div className="flex items-center gap-2">
+                                  <label className="p-2.5 rounded-xl bg-white/5 border border-border-dim text-slate-400 hover:text-emerald-500 transition-all cursor-pointer">
+                                     <Paperclip size={18} />
+                                     <input type="file" className="hidden" onChange={async (e) => {
+                                        const f = e.target.files[0];
+                                        if(!f) return;
+                                        // Auto-send media
+                                        const formData = new FormData();
+                                        formData.append('media', f);
+                                        const typeMap = { 'image': 'image', 'video': 'video', 'pdf': 'document', 'msword': 'document' };
+                                        let type = 'document';
+                                        Object.keys(typeMap).forEach(key => { if(f.type.includes(key)) type = typeMap[key]; });
+
+                                        setIsSendingReply(true);
+                                        try {
+                                           const upRes = await fetchWithAuth(`${API_BASE}/api/upload-media`, { method: 'POST', body: formData });
+                                           const upData = await upRes.json();
+                                           if (upData.mediaId) {
+                                              await fetchWithAuth(`${API_BASE}/api/reply`, { 
+                                                 method: 'POST', 
+                                                 headers: {'Content-Type': 'application/json'}, 
+                                                 body: JSON.stringify({ phone: activeChatPhone, type: type, mediaId: upData.mediaId, text: f.name }) 
+                                              });
+                                              // Refresh
+                                              const hr = await fetchWithAuth(`${API_BASE}/api/chats/${activeChatPhone}`);
+                                              const hd = await hr.json();
+                                              if (Array.isArray(hd)) setActiveChatHistory(hd);
+                                           }
+                                        } catch(err) { alert('Media upload failed'); } finally { setIsSendingReply(false); }
+                                     }} />
+                                  </label>
+                                  <textarea value={replyText} onChange={e => setReplyText(e.target.value)} placeholder="Type a message..." className="flex-1 bg-bg-base border border-border-dim rounded-2xl p-3 lg:p-4 text-[13px] font-medium text-white outline-none focus:border-emerald-500/30 resize-none min-h-[48px] max-h-32 transition-all" onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendReply(e); } }} />
+                                  <button type="submit" disabled={!replyText.trim() || isSendingReply} className="h-12 w-12 lg:h-14 lg:w-14 flex items-center justify-center bg-emerald-500 text-black rounded-2xl transition-all shadow-lg shadow-emerald-500/10 disabled:opacity-50">
+                                     {isSendingReply ? <ArrowsClockwise size={18} className="animate-spin" /> : <PaperPlaneTilt size={20} weight="bold" />}
                                   </button>
                                </div>
                             </form>

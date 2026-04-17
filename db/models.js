@@ -28,7 +28,8 @@ const ChatSchema = new mongoose.Schema({
         timestamp: String,
         type: { type: String, default: 'text' },
         status: { type: String }
-    }]
+    }],
+    unreadCount: { type: Number, default: 0 }
 }, { timestamps: true });
 
 // Ensure a phone number is unique ONLY within a specific user's scope

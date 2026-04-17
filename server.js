@@ -1088,7 +1088,8 @@ app.post('/webhook', async (req, res) => {
                 { userId: userId, phone: from },
                 { 
                     $setOnInsert: { name: profileName },
-                    $push: { messages: newMsg } 
+                    $push: { messages: newMsg },
+                    $inc: { unreadCount: 1 }
                 },
                 { upsert: true }
             );
@@ -1128,26 +1129,51 @@ app.get('/api/chats/:phone', authenticateToken, async (req, res) => {
   }
 });
 
+// Mark chat as read
+app.post('/api/chats/:phone/read', authenticateToken, async (req, res) => {
+  try {
+    await Chat.findOneAndUpdate(
+      { userId: req.user.id, phone: req.params.phone },
+      { $set: { unreadCount: 0 } }
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to mark as read' });
+  }
+});
+
 app.post('/api/reply', authenticateToken, async (req, res) => {
-  const { phone, text } = req.body;
+  const { phone, text, type = 'text', mediaId } = req.body;
   const userId = req.user.id;
   const user = await User.findById(userId);
 
-  if (!phone || !text) return res.status(400).json({ error: 'Phone and text are required' });
+  if (!phone) return res.status(400).json({ error: 'Phone is required' });
+  if (type === 'text' && !text) return res.status(400).json({ error: 'Text is required for text messages' });
+  if (type !== 'text' && !mediaId) return res.status(400).json({ error: 'Media ID is required for non-text messages' });
+
   if (!user || !user.config.token || !user.config.phoneId) {
      return res.status(400).json({ error: 'WhatsApp Credentials not configured' });
   }
   
   try {
-    const payload = {
+    let payload = {
       messaging_product: "whatsapp",
       recipient_type: "individual",
       to: phone,
-      type: "text",
-      text: { body: text }
+      type: type
     };
+
+    if (type === 'text') {
+      payload.text = { body: text };
+    } else if (type === 'image') {
+      payload.image = { id: mediaId, caption: text };
+    } else if (type === 'video') {
+      payload.video = { id: mediaId, caption: text };
+    } else if (type === 'document') {
+      payload.document = { id: mediaId, caption: text, filename: "Attachment" };
+    }
     
-    console.log(`[REPLY] Sending to ${phone}: ${text}`);
+    console.log(`[REPLY] Sending ${type} to ${phone}`);
     
     await axios.post(`https://graph.facebook.com/v21.0/${user.config.phoneId}/messages`, payload, {
       headers: { 'Authorization': `Bearer ${user.config.token}`, 'Content-Type': 'application/json' }
@@ -1157,9 +1183,9 @@ app.post('/api/reply', authenticateToken, async (req, res) => {
       id: `internal_${Date.now()}`,
       from: 'me',
       name: phone, 
-      text: text,
+      text: text || `[${type}]`,
       timestamp: Date.now(),
-      type: 'text'
+      type: type
     };
 
     await Chat.findOneAndUpdate(
