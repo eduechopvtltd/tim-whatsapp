@@ -653,8 +653,10 @@ app.post('/api/send', authenticateToken, async (req, res) => {
               if (variable.toLowerCase() === 'name') val = val.split(' ')[0];
               
               const param = { type: 'text', text: val || ' ' };
-              if (template.format === 'NAMED' && compData.body.portalNames[idx]) {
-                param.parameter_name = compData.body.portalNames[idx];
+              if (template.format === 'NAMED') {
+                // CRITICAL: parameter_name must be the RAW variable name (e.g. "name"),
+                // NOT the portal display label (e.g. "Variable: name")
+                param.parameter_name = variable;
               }
               bodyComp.parameters.push(param);
             });
@@ -689,38 +691,11 @@ app.post('/api/send', authenticateToken, async (req, res) => {
         // Log the FULL payload for debugging
         console.log(`[SEND] Payload to ${cleanPhone.substring(0,4)}***:`, JSON.stringify(payload, null, 2));
         
-        try {
-          const response = await axios.post(`https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`, payload, {
-            headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}`, 'Content-Type': 'application/json' }
-          });
-          msgStatus = 'Sent ✅';
-          wamid = response.data.messages?.[0]?.id;
-        } catch (firstErr) {
-          // Check for specific Error 132012 "Parameter format does not match"
-          const errorCode = firstErr.response?.data?.error?.error_subcode || firstErr.response?.data?.error?.code;
-          
-          if (errorCode === 132012 || errorCode === 100) {
-            console.log(`[FALLBACK] Error ${errorCode}, retrying without parameter_name for ${cleanPhone.substring(0,4)}***`);
-            
-            // Create a fallback payload WITHOUT parameter_name
-            const fallbackPayload = JSON.parse(JSON.stringify(payload));
-            if (fallbackPayload.template && fallbackPayload.template.components) {
-              fallbackPayload.template.components.forEach(comp => {
-                if (comp.parameters) {
-                  comp.parameters.forEach(p => delete p.parameter_name);
-                }
-              });
-            }
-
-            const response = await axios.post(`https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`, fallbackPayload, {
-              headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}`, 'Content-Type': 'application/json' }
-            });
-            msgStatus = 'Sent ✅';
-            wamid = response.data.messages?.[0]?.id;
-          } else {
-            throw firstErr; // Rethrow other errors
-          }
-        }
+        const response = await axios.post(`https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`, payload, {
+          headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}`, 'Content-Type': 'application/json' }
+        });
+        msgStatus = 'Sent ✅';
+        wamid = response.data.messages?.[0]?.id;
       } catch (err) {
         // Log the COMPLETE error response from Meta for debugging
         if (err.response?.data) {
