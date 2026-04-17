@@ -279,6 +279,14 @@ export default function App() {
     );
   }, [historyData, debouncedHistorySearch]);
 
+  const sortedChats = useMemo(() => {
+    return [...chats].sort((a, b) => {
+      const dateA = new Date(a.updatedAt || 0).getTime();
+      const dateB = new Date(b.updatedAt || 0).getTime();
+      return dateB - dateA;
+    });
+  }, [chats]);
+
   useEffect(() => { const t = setTimeout(() => setDebouncedSearch(searchTerm), 300); return () => clearTimeout(t); }, [searchTerm]);
   useEffect(() => { const t = setTimeout(() => setDebouncedHistorySearch(historySearchTerm), 300); return () => clearTimeout(t); }, [historySearchTerm]);
 
@@ -1049,7 +1057,7 @@ export default function App() {
                          <input placeholder="Search conversations..." className="w-full bg-white/[0.02] border border-border-dim rounded-xl pl-10 pr-4 py-3 text-xs font-medium text-white outline-none focus:border-emerald-500/20 placeholder:text-slate-700" />
                       </div>
                       <div className="flex-1 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
-                         {chats.length > 0 ? chats.map(chat => (
+                         {sortedChats.length > 0 ? sortedChats.map(chat => (
                             <button key={chat.phone} onClick={async () => { 
                                setActiveChatPhone(chat.phone); 
                                setActiveChatHistory([]);

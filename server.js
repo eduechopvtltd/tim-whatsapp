@@ -395,7 +395,7 @@ app.post('/api/upload-media', authenticateToken, upload.single('media'), async (
     fs.unlinkSync(filePath);
 
     console.log(`[META] Media upload success. ID: ${response.data.id}`);
-    res.json({ media_id: response.data.id });
+    res.json({ mediaId: response.data.id });
   } catch (err) {
     console.error('[META] Media Upload Failed:', err.response?.data || err.message);
     if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
@@ -1141,7 +1141,8 @@ app.post('/webhook', async (req, res) => {
                 { 
                     $setOnInsert: { name: profileName },
                     $push: { messages: newMsg },
-                    $inc: { unreadCount: 1 }
+                    $inc: { unreadCount: 1 },
+                    $set: { updatedAt: Date.now() }
                 },
                 { upsert: true }
             );
@@ -1242,7 +1243,10 @@ app.post('/api/reply', authenticateToken, async (req, res) => {
 
     await Chat.findOneAndUpdate(
         { userId: userId, phone: phone },
-        { $push: { messages: newMsg } },
+        { 
+            $push: { messages: newMsg },
+            $set: { updatedAt: Date.now() }
+        },
         { upsert: true }
     );
     
