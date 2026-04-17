@@ -485,15 +485,48 @@ app.post('/api/send', authenticateToken, async (req, res) => {
           if (template.componentsData.header.type) {
             const hType = template.componentsData.header.type;
             if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(hType)) {
-              // Use the pre-cached media ID (user-uploaded or auto-downloaded)
-              if (cachedHeaderMediaId) {
+              // CRITICAL: Template messages MUST use Media ID, never URL links.
+              // Using {link: url} causes WhatsApp to show a link preview card (Portuguese text).
+              // Always use {id: mediaId} to avoid this.
+              let mediaId = cachedHeaderMediaId;
+
+              // If we somehow still have a URL instead of a Media ID, upload it now
+              if (mediaId && String(mediaId).startsWith('http')) {
+                try {
+                  console.log(`[HEADER] URL detected instead of Media ID, uploading...`);
+                  const dlRes = await axios.get(mediaId, { responseType: 'arraybuffer' });
+                  const dlBuffer = Buffer.from(dlRes.data);
+                  const dlType = dlRes.headers['content-type'] || 'image/jpeg';
+                  const dlExt = mime.extension(dlType) || 'jpg';
+                  const dlDir = path.join(__dirname, 'uploads');
+                  if (!fs.existsSync(dlDir)) fs.mkdirSync(dlDir, { recursive: true });
+                  const dlPath = path.join(dlDir, `hdr_${Date.now()}.${dlExt}`);
+                  fs.writeFileSync(dlPath, dlBuffer);
+
+                  const dlForm = new FormData();
+                  dlForm.append('messaging_product', 'whatsapp');
+                  dlForm.append('file', fs.createReadStream(dlPath), { filename: `header.${dlExt}`, contentType: dlType });
+                  const dlUpload = await axios.post(
+                    `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/media`, dlForm,
+                    { headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}`, ...dlForm.getHeaders() } }
+                  );
+                  mediaId = dlUpload.data.id;
+                  console.log(`[HEADER] Converted URL to Media ID: ${mediaId}`);
+                  try { fs.unlinkSync(dlPath); } catch(e) {}
+                } catch (convErr) {
+                  console.error(`[HEADER] URL-to-MediaID conversion failed:`, convErr.response?.data || convErr.message);
+                  mediaId = null;
+                }
+              }
+
+              if (mediaId) {
                 const typeLower = hType.toLowerCase();
-                const isUrl = String(cachedHeaderMediaId).startsWith('http');
+                console.log(`[HEADER] Sending ${hType} with Media ID: ${mediaId}`);
                 components.push({
                   type: "header",
                   parameters: [{ 
                     type: typeLower, 
-                    [typeLower]: isUrl ? { link: cachedHeaderMediaId } : { id: cachedHeaderMediaId } 
+                    [typeLower]: { id: mediaId }
                   }]
                 });
               }
