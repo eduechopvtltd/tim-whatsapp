@@ -1,12 +1,30 @@
+# Dependency directories
 node_modules/
-.env
-uploads/
-sent_history.json
 frontend/node_modules/
+
+# Build outputs
 frontend/dist/
-campaign_history.json
-media_cache.json
+
+# Environment and sensitive data
+.env
+sample.csv
+
+# Local data & state (Migrated to MongoDB)
 active_jobs.json
+campaign_history.json
 chats.json
+media_cache.json
+sent_history.json
+templates.json
 wamid_map.json
-webhook.log
+
+# Log files
+*.log
+
+# Temp/Media uploads
+uploads/
+
+# Agent & System directories
+.agents/
+scratch/
+.DS_Store
