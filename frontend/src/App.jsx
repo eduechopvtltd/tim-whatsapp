@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Plus, 
   House, 
@@ -30,7 +30,9 @@ import {
   Paperclip,
   ImageSquare,
   VideoCamera,
-  FileText
+  FileText,
+  Phone,
+  ArrowSquareOut
 } from "@phosphor-icons/react";
 import { motion, AnimatePresence } from 'framer-motion';
 import { clsx } from 'clsx';
