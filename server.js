@@ -534,8 +534,7 @@ app.post('/api/send', authenticateToken, async (req, res) => {
             } else if (template.componentsData.header.variables.length > 0) {
               const params = template.componentsData.header.variables.map(v => ({
                 type: "text",
-                parameter_name: String(v),
-                text: getVal(v) || 'Trip In Minutes' // Smart default to avoid Meta placeholder
+                text: getVal(v) || 'Trip In Minutes'
               }));
               components.push({ type: "header", parameters: params });
             }
@@ -545,7 +544,6 @@ app.post('/api/send', authenticateToken, async (req, res) => {
           if (template.componentsData.body.variables.length > 0) {
             const params = template.componentsData.body.variables.map(v => ({
               type: "text",
-              parameter_name: String(v),
               text: getVal(v) || ' ' 
             }));
             components.push({ type: "body", parameters: params });
@@ -555,7 +553,6 @@ app.post('/api/send', authenticateToken, async (req, res) => {
           if (template.componentsData.footer.variables.length > 0) {
             const params = template.componentsData.footer.variables.map(v => ({
               type: "text",
-              parameter_name: String(v),
               text: getVal(v) || ' '
             }));
             components.push({ type: "footer", parameters: params });
@@ -573,11 +570,10 @@ app.post('/api/send', authenticateToken, async (req, res) => {
                 
                 return {
                   type: "text",
-                  parameter_name: String(v),
                   text: val || ' '
                 };
               });
-              components.push({ type: "button", sub_type: "url", index: idx, parameters: params });
+              components.push({ type: "button", sub_type: "url", index: idx.toString(), parameters: params });
             }
           });
 
@@ -587,11 +583,32 @@ app.post('/api/send', authenticateToken, async (req, res) => {
         // DEBUG: Log the exact payload being sent to Meta
         console.log(`[SEND] To: ${cleanPhone.substring(0, 4)}***`, JSON.stringify(payload.template?.components || 'text-mode', null, 2));
 
-        const response = await axios.post(`https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`, payload, {
-          headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}`, 'Content-Type': 'application/json' }
-        });
-        msgStatus = 'Sent ✅';
-        wamid = response.data.messages?.[0]?.id;
+        try {
+          const response = await axios.post(`https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`, payload, {
+            headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}`, 'Content-Type': 'application/json' }
+          });
+          msgStatus = 'Sent ✅';
+          wamid = response.data.messages?.[0]?.id;
+        } catch (firstErr) {
+          // Fallback: If parameter format fails (Error 132012), retry without parameter_name
+          const errorCode = firstErr.response?.data?.error?.error_subcode || firstErr.response?.data?.error?.code;
+          if (errorCode === 132012 || errorCode === 100) {
+            console.log(`[FALLBACK] Parameter error (${errorCode}), retrying with positional params for ${cleanPhone.substring(0,4)}***`);
+            const fallbackPayload = JSON.parse(JSON.stringify(payload));
+            if (fallbackPayload.template && fallbackPayload.template.components) {
+              fallbackPayload.template.components.forEach(comp => {
+                if (comp.parameters) comp.parameters.forEach(p => delete p.parameter_name);
+              });
+            }
+            const response = await axios.post(`https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`, fallbackPayload, {
+              headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}`, 'Content-Type': 'application/json' }
+            });
+            msgStatus = 'Sent ✅';
+            wamid = response.data.messages?.[0]?.id;
+          } else {
+            throw firstErr;
+          }
+        }
       } catch (err) {
         msgStatus = `Failed: ${err.message}`;
         if (err.response?.data?.error) {
