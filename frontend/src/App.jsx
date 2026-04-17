@@ -209,9 +209,37 @@ export default function App() {
     return () => clearInterval(interval);
   }, [token, activeTab, activeChatPhone]);
 
-  // UNREAD NOTIFICATIONS SYNC
   const unreadTotal = useMemo(() => chats.reduce((acc, c) => acc + (c.unreadCount || 0), 0), [chats]);
 
+  // --- NOTIFICATION SOUNDS & BROWSER POPUPS ---
+  const lastUnreadTotal = useRef(0);
+  const notificationSound = useMemo(() => new Audio('https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3'), []);
+
+  useEffect(() => {
+    // Request permission on first load
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (unreadTotal > lastUnreadTotal.current) {
+      // PLAY SOUND
+      notificationSound.play().catch(() => {});
+
+      // BROWSER POPUP
+      if ("Notification" in window && Notification.permission === "granted" && document.hidden) {
+        const latestChat = chats.find(c => (c.unreadCount || 0) > 0);
+        new Notification("New WhatsApp Message", {
+          body: latestChat ? `From: ${latestChat.name || latestChat.phone}` : "You have new messages",
+          icon: "/vite.svg" 
+        });
+      }
+    }
+    lastUnreadTotal.current = unreadTotal;
+  }, [unreadTotal, notificationSound, chats]);
+
+  // UNREAD NOTIFICATIONS SYNC
   useEffect(() => {
     if (unreadTotal > 0) {
       document.title = `(${unreadTotal}) TIM Cloud`;
@@ -1477,7 +1505,7 @@ function SidebarLink({ active, onClick, icon: Icon, label, badge }) {
       {badge && (
         <span className={cn(
           "px-1.5 py-0.5 rounded-full text-[9px] font-black min-w-[18px] text-center shadow-sm",
-          active ? "bg-black/20 text-black" : "bg-emerald-500 text-black border border-emerald-500/20 shadow-emerald-500/10"
+          active ? "bg-black/20 text-black" : "bg-emerald-500 text-black border border-emerald-500/20 shadow-emerald-500/10 animate-pulse"
         )}>
           {badge}
         </span>
