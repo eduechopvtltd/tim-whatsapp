@@ -170,84 +170,73 @@ const getMetaTemplatesForUser = async (wabaId, accessToken) => {
     });
 
     const parsedTemplates = response.data.data.filter(t => t.status === 'APPROVED').map(t => {
+      // ═══ PERFECTLY SYNC WITH META'S RAW TEMPLATE STRUCTURE ═══
+      // We store the RAW components from Meta AND a clean parsed version
       const componentsData = {
-        header: { type: null, text: null, imageUrl: null, variables: [], portalNames: [] },
-        body: { text: null, variables: [], portalNames: [] },
-        footer: { text: null, variables: [], portalNames: [] },
+        header: { type: null, text: null, imageUrl: null, variables: [] },
+        body: { text: null, variables: [] },
+        footer: { text: null },
         buttons: []
       };
 
+      // Helper: extract variable names from text like "Hello {{name}}, your code is {{code}}"
+      const extractVars = (text) => {
+        if (!text) return [];
+        const matches = text.match(/\{\{([a-zA-Z0-9_]+)\}\}/g) || [];
+        return [...new Set(matches.map(m => m.replace(/[{}]/g, '')))];
+      };
+
       t.components.forEach(comp => {
-        if (comp.type === 'HEADER') {
-          componentsData.header.type = comp.format;
-          componentsData.header.text = comp.text || null;
-          if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(comp.format)) {
-            if (comp.example?.header_handle?.[0]) {
-              componentsData.header.imageUrl = comp.example.header_handle[0];
+        switch (comp.type) {
+          case 'HEADER':
+            componentsData.header.type = comp.format; // TEXT, IMAGE, VIDEO, DOCUMENT
+            componentsData.header.text = comp.text || null;
+            // Extract media example URL for auto-download
+            if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(comp.format)) {
+              componentsData.header.imageUrl = comp.example?.header_handle?.[0] || null;
             }
-          }
-          const vars = comp.text?.match(/{{([a-zA-Z0-9_]+)}}/g)?.map(m => m.replace(/[{}]/g, '')) || [];
-          const uniqueVars = [...new Set(vars)].sort((a, b) => {
-            if (!isNaN(a) && !isNaN(b)) return parseInt(a) - parseInt(b);
-            return a.localeCompare(b);
-          });
-          uniqueVars.forEach(v => {
-            componentsData.header.variables.push(v);
-            const label = isNaN(v) ? `Variable: ${v}` : `Header Var ${v}`;
-            componentsData.header.portalNames.push(label);
-          });
-        }
+            // Extract text header variables
+            componentsData.header.variables = extractVars(comp.text);
+            break;
 
-        if (comp.type === 'BODY') {
-          componentsData.body.text = comp.text || null;
-          const vars = comp.text?.match(/{{([a-zA-Z0-9_]+)}}/g)?.map(m => m.replace(/[{}]/g, '')) || [];
-          const uniqueVars = [...new Set(vars)].sort((a, b) => {
-            if (!isNaN(a) && !isNaN(b)) return parseInt(a) - parseInt(b);
-            return a.localeCompare(b);
-          });
-          uniqueVars.forEach(v => {
-            componentsData.body.variables.push(v);
-            const label = isNaN(v) ? `Variable: ${v}` : `Body Var ${v}`;
-            componentsData.body.portalNames.push(label);
-          });
-        }
+          case 'BODY':
+            componentsData.body.text = comp.text || null;
+            componentsData.body.variables = extractVars(comp.text);
+            break;
 
-        if (comp.type === 'FOOTER') {
-          componentsData.footer.text = comp.text || null;
-          const vars = comp.text?.match(/{{([a-zA-Z0-9_]+)}}/g)?.map(m => m.replace(/[{}]/g, '')) || [];
-          const uniqueVars = [...new Set(vars)].sort((a, b) => {
-            if (!isNaN(a) && !isNaN(b)) return parseInt(a) - parseInt(b);
-            return a.localeCompare(b);
-          });
-          uniqueVars.forEach(v => {
-            componentsData.footer.variables.push(v);
-            componentsData.footer.portalNames.push(`Footer Var ${v}`);
-          });
-        }
+          case 'FOOTER':
+            componentsData.footer.text = comp.text || null;
+            break;
 
-        if (comp.type === 'BUTTONS') {
-          comp.buttons.forEach((btn, idx) => {
-            const btnData = { type: btn.type, text: btn.text, index: idx, variables: [], portalNames: [] };
-            if (btn.type === 'URL' && btn.url) {
-              const matches = btn.url.match(/{{([a-zA-Z0-9_]+)}}/g) || [];
-              const uniqueMatches = [...new Set(matches.map(m => m.replace(/[{}]/g, '')))].sort((a, b) => {
-                if (!isNaN(a) && !isNaN(b)) return parseInt(a) - parseInt(b);
-                return a.localeCompare(b);
-              });
-              uniqueMatches.forEach(v => {
-                btnData.variables.push(v);
-                btnData.portalNames.push(`Btn ${idx} Var ${v}`);
-              });
-            }
-            componentsData.buttons.push(btnData);
-          });
+          case 'BUTTONS':
+            (comp.buttons || []).forEach((btn, idx) => {
+              const btnData = {
+                type: btn.type,       // URL, QUICK_REPLY, PHONE_NUMBER, FLOW, COPY_CODE, OTP
+                text: btn.text || '',
+                index: idx,
+                url: btn.url || null,         // For URL buttons
+                phone_number: btn.phone_number || null, // For PHONE buttons
+                flow_id: btn.flow_id || null,  // For FLOW buttons
+                flow_name: btn.flow_name || null,
+                flow_action: btn.flow_action || null,
+                variables: []                  // Only URL buttons have dynamic variables
+              };
+              // Only URL buttons can have dynamic {{variables}} in the URL
+              if (btn.type === 'URL' && btn.url) {
+                btnData.variables = extractVars(btn.url);
+              }
+              componentsData.buttons.push(btnData);
+            });
+            break;
         }
       });
 
       return {
         name: t.name,
         language: t.language,
-        format: t.parameter_format || 'POSITIONAL',
+        category: t.category,                           // MARKETING, UTILITY, AUTHENTICATION
+        format: t.parameter_format || 'POSITIONAL',     // NAMED or POSITIONAL
+        rawComponents: t.components,                     // Keep raw Meta data for reference
         componentsData
       };
     });
@@ -590,105 +579,109 @@ app.post('/api/send', authenticateToken, async (req, res) => {
           };
 
           const compData = template.componentsData;
+          const isNamed = template.format === 'NAMED';
 
-          // 1. Header Component
+          // ═══ 1. HEADER COMPONENT ═══
+          // Meta docs: type "header" with parameters based on header format
           if (compData.header.type) {
             const headerComp = { type: "header", parameters: [] };
-            
+
             if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(compData.header.type)) {
+              // Media header — use {id: mediaId} (NEVER {link: url})
               const typeLower = compData.header.type.toLowerCase();
-              
-              // ALWAYS use {id: mediaId} — never {link: URL} to prevent Portuguese link preview text
               if (cachedHeaderMediaId) {
-                // If somehow we still have a URL, convert it to media ID first
-                let mediaId = cachedHeaderMediaId;
-                if (String(mediaId).startsWith('http')) {
-                  try {
-                    console.log(`[HEADER] URL detected, converting to Media ID...`);
-                    const dlRes = await axios.get(mediaId, { responseType: 'arraybuffer' });
-                    const dlBuffer = Buffer.from(dlRes.data);
-                    const dlType = dlRes.headers['content-type'] || 'image/jpeg';
-                    const dlExt = mime.extension(dlType) || 'jpg';
-                    const dlDir = path.join(__dirname, 'uploads');
-                    if (!fs.existsSync(dlDir)) fs.mkdirSync(dlDir, { recursive: true });
-                    const dlPath = path.join(dlDir, `hdr_${Date.now()}.${dlExt}`);
-                    fs.writeFileSync(dlPath, dlBuffer);
-                    const dlForm = new FormData();
-                    dlForm.append('messaging_product', 'whatsapp');
-                    dlForm.append('file', fs.createReadStream(dlPath), { filename: `header.${dlExt}`, contentType: dlType });
-                    const dlUpload = await axios.post(
-                      `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/media`, dlForm,
-                      { headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}`, ...dlForm.getHeaders() } }
-                    );
-                    mediaId = dlUpload.data.id;
-                    cachedHeaderMediaId = mediaId; // Cache for next contacts
-                    console.log(`[HEADER] Converted URL → Media ID: ${mediaId}`);
-                    try { fs.unlinkSync(dlPath); } catch(e) {}
-                  } catch (convErr) {
-                    console.error(`[HEADER] URL→MediaID failed:`, convErr.response?.data || convErr.message);
-                    mediaId = null;
-                  }
-                }
-                if (mediaId) {
-                  headerComp.parameters.push({ type: typeLower, [typeLower]: { id: mediaId } });
-                }
+                headerComp.parameters.push({ 
+                  type: typeLower, 
+                  [typeLower]: { id: String(cachedHeaderMediaId) } 
+                });
               }
             } else if (compData.header.type === 'TEXT' && compData.header.variables.length > 0) {
-              compData.header.variables.forEach((variable, idx) => {
-                const val = String(contact[mapping[variable]] || '');
-                headerComp.parameters.push({ type: "text", text: val || ' ' });
+              // Text header with variables like "Hello {{1}}" or "Hello {{name}}"
+              compData.header.variables.forEach(variable => {
+                const csvCol = mapping[variable];
+                const val = csvCol ? String(contact[csvCol] || '') : '';
+                const param = { type: "text", text: val || ' ' };
+                if (isNamed) param.parameter_name = variable;
+                headerComp.parameters.push(param);
               });
             }
-
+            // Only add header if it has parameters
             if (headerComp.parameters.length > 0) {
               payload.template.components.push(headerComp);
             }
           }
 
-          // 2. Body Component (exact old working format)
+          // ═══ 2. BODY COMPONENT ═══
+          // Meta docs: type "body" with text parameters for each {{variable}}
           if (compData.body.variables.length > 0) {
             const bodyComp = { type: "body", parameters: [] };
-            compData.body.variables.forEach((variable, idx) => {
-              let val = String(contact[mapping[variable]] || '');
-              if (variable.toLowerCase() === 'name') val = val.split(' ')[0];
-              
-              const param = { type: 'text', text: val || ' ' };
-              if (template.format === 'NAMED') {
-                // CRITICAL: parameter_name must be the RAW variable name (e.g. "name"),
-                // NOT the portal display label (e.g. "Variable: name")
-                param.parameter_name = variable;
+            compData.body.variables.forEach(variable => {
+              const csvCol = mapping[variable];
+              let val = csvCol ? String(contact[csvCol] || '') : '';
+              // Auto-extract first name for "name" variables
+              if (variable.toLowerCase() === 'name' && val.includes(' ')) {
+                val = val.split(' ')[0];
               }
+              const param = { type: 'text', text: val || ' ' };
+              // NAMED templates require parameter_name = actual variable name
+              if (isNamed) param.parameter_name = variable;
               bodyComp.parameters.push(param);
             });
             payload.template.components.push(bodyComp);
           }
 
-          // 3. Button Components (exact old working format)
-          compData.buttons.forEach((btn, idx) => {
+          // ═══ 3. BUTTON COMPONENTS ═══
+          // Meta docs: each button is a separate component with type "button"
+          compData.buttons.forEach(btn => {
+            // URL buttons with dynamic variables (e.g. https://example.com/{{1}})
             if (btn.type === 'URL' && btn.variables.length > 0) {
-              const btnComp = { type: "button", sub_type: "url", index: idx.toString(), parameters: [] };
-              const val = String(contact[mapping[`btn_${idx}_${btn.variables[0]}`]] || contact[mapping[`button_${idx}_url_suffix`]] || '');
-              if (val) {
-                btnComp.parameters.push({ type: "text", text: val });
+              const btnComp = { 
+                type: "button", 
+                sub_type: "url", 
+                index: String(btn.index), 
+                parameters: [] 
+              };
+              btn.variables.forEach(variable => {
+                const csvCol = mapping[`btn_${btn.index}_${variable}`] || mapping[variable];
+                const val = csvCol ? String(contact[csvCol] || '') : '';
+                if (val) btnComp.parameters.push({ type: "text", text: val });
+              });
+              if (btnComp.parameters.length > 0) {
                 payload.template.components.push(btnComp);
               }
             }
 
+            // FLOW buttons — require flow_token
             if (btn.type === 'FLOW') {
               payload.template.components.push({
                 type: "button",
                 sub_type: "flow",
-                index: idx.toString(),
+                index: String(btn.index),
                 parameters: [{
                   type: "action",
-                  action: { flow_token: `token_${Date.now()}_${Math.floor(Math.random() * 1000)}` }
+                  action: { flow_token: `flow_${Date.now()}_${Math.random().toString(36).substr(2, 6)}` }
                 }]
               });
             }
+
+            // COPY_CODE buttons — require coupon_code
+            if (btn.type === 'COPY_CODE') {
+              const codeCol = mapping[`btn_${btn.index}_code`] || mapping['coupon_code'] || mapping['code'];
+              const code = codeCol ? String(contact[codeCol] || 'CODE') : 'CODE';
+              payload.template.components.push({
+                type: "button",
+                sub_type: "copy_code",
+                index: String(btn.index),
+                parameters: [{ type: "coupon_code", coupon_code: code }]
+              });
+            }
+
+            // QUICK_REPLY and PHONE_NUMBER buttons don't need parameters
+            // They are defined in the template itself
           });
         }
 
-        // Log the FULL payload for debugging
+        // Log the payload for debugging
         console.log(`[SEND] Payload to ${cleanPhone.substring(0,4)}***:`, JSON.stringify(payload, null, 2));
         
         const response = await axios.post(`https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`, payload, {

@@ -677,7 +677,7 @@ export default function App() {
                                             {headerInfo.variables.map((v, i) => (
                                                <FieldSelect 
                                                  key={`h-${i}`} 
-                                                 label={`Header Variable: ${headerInfo.portalNames[i] || v}`} 
+                                                 label={`Header: ${v}`} 
                                                  value={mapping[v] || mapping[`Header Var ${v}`] || ''} 
                                                  onChange={val => setMapping({...mapping, [v]: val, [`Header Var ${v}`]: val})} 
                                                  options={csvHeaders} 
@@ -701,7 +701,7 @@ export default function App() {
                                             {bodyVariables.map((v, i) => (
                                                <FieldSelect 
                                                  key={`b-${i}`} 
-                                                 label={`Field: ${selectedTpl?.componentsData?.body?.portalNames[i] || v}`} 
+                                                 label={`Body: ${v}`} 
                                                  value={mapping[v] || mapping[`Body Var ${v}`] || ''} 
                                                  onChange={val => setMapping({...mapping, [v]: val, [`Body Var ${v}`]: val})} 
                                                  options={csvHeaders} 
@@ -711,7 +711,7 @@ export default function App() {
                                             {footerVariables.map((v, i) => (
                                                <FieldSelect 
                                                  key={`f-${i}`} 
-                                                 label={`Footer Field: ${selectedTpl?.componentsData?.footer?.portalNames[i] || v}`} 
+                                                 label={`Footer: ${v}`} 
                                                  value={mapping[v] || mapping[`Footer Var ${v}`] || ''} 
                                                  onChange={val => setMapping({...mapping, [v]: val, [`Footer Var ${v}`]: val})} 
                                                  options={csvHeaders} 
@@ -726,7 +726,7 @@ export default function App() {
                                                   {btn.variables.map((v, vIdx) => (
                                                      <FieldSelect 
                                                         key={vIdx} 
-                                                        label={`Parameter: ${btn.portalNames[vIdx] || v}`} 
+                                                        label={`Button ${btn.text}: ${v}`} 
                                                         value={mapping[`btn_${bIdx}_${v}`] || mapping[`Btn ${bIdx} Var ${v}`] || ''} 
                                                         onChange={val => setMapping({...mapping, [`btn_${bIdx}_${v}`]: val, [`Btn ${bIdx} Var ${v}`]: val})} 
                                                         options={csvHeaders} 
