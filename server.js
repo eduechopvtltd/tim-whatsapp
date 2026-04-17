@@ -143,7 +143,161 @@ app.post('/auth/login', async (req, res) => {
     res.status(500).json({ error: 'Server error during login' });
   }
 });
-// Helpers
+
+// ═══════════════════ MODULAR ENGINE HELPERS ═══════════════════
+
+/**
+ * Build a simple text message payload
+ */
+function buildTextPayload(to, text) {
+    return {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: to,
+        type: "text",
+        text: { body: text }
+    };
+}
+
+/**
+ * Build a complex template message payload (NAMED or POSITIONAL)
+ */
+function buildTemplatePayload(to, template, mapping, contact, cachedHeaderMediaId) {
+    const isNamed = template.format === 'NAMED';
+    const payload = {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: to,
+        type: "template",
+        template: {
+            name: template.name,
+            language: { code: template.language || "en_US" },
+            components: []
+        }
+    };
+
+    const compData = template.componentsData;
+
+    // 1. Header Component
+    if (compData.header.type) {
+        const headerComp = { type: "header", parameters: [] };
+        const typeLower = compData.header.type.toLowerCase();
+
+        if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(compData.header.type)) {
+            if (cachedHeaderMediaId) {
+                const mediaParam = {
+                    type: typeLower,
+                    [typeLower]: { id: String(cachedHeaderMediaId) }
+                };
+                if (isNamed) {
+                    const headerObj = template.rawComponents.find(c => c.type === 'HEADER');
+                    const mediaParamName = headerObj?.example?.header_handle_named_params?.[0]?.param_name || 'header_image';
+                    mediaParam.parameter_name = mediaParamName;
+                }
+                headerComp.parameters.push(mediaParam);
+            }
+        } else if (compData.header.type === 'TEXT' && compData.header.variables.length > 0) {
+            compData.header.variables.forEach(variable => {
+                const csvCol = mapping[variable];
+                const val = csvCol ? String(contact[csvCol] || '') : '';
+                const param = { type: "text", text: val || ' ' };
+                if (isNamed) param.parameter_name = variable;
+                headerComp.parameters.push(param);
+            });
+        }
+
+        if (headerComp.parameters.length > 0) {
+            payload.template.components.push(headerComp);
+        }
+    }
+
+    // 2. Body Component
+    if (compData.body.variables.length > 0) {
+        const bodyComp = { type: "body", parameters: [] };
+        compData.body.variables.forEach(variable => {
+            const csvCol = mapping[variable];
+            let val = csvCol ? String(contact[csvCol] || '') : '';
+            if (variable.toLowerCase() === 'name' && val.includes(' ')) {
+                val = val.split(' ')[0];
+            }
+            const param = { type: 'text', text: val || ' ' };
+            if (isNamed) param.parameter_name = variable;
+            bodyComp.parameters.push(param);
+        });
+        payload.template.components.push(bodyComp);
+    }
+
+    // 3. Button Components
+    compData.buttons.forEach(btn => {
+        if (btn.type === 'URL' && btn.variables.length > 0) {
+            const btnComp = {
+                type: "button",
+                sub_type: "url",
+                index: String(btn.index),
+                parameters: []
+            };
+            btn.variables.forEach(variable => {
+                const csvCol = mapping[`btn_${btn.index}_${variable}`] || mapping[variable];
+                const val = csvCol ? String(contact[csvCol] || '') : '';
+                if (val) {
+                    const bParam = { type: "text", text: val };
+                    if (isNamed) bParam.parameter_name = variable;
+                    btnComp.parameters.push(bParam);
+                }
+            });
+            if (btnComp.parameters.length > 0) payload.template.components.push(btnComp);
+        }
+
+        if (btn.type === 'FLOW') {
+            payload.template.components.push({
+                type: "button",
+                sub_type: "flow",
+                index: String(btn.index),
+                parameters: [{
+                    type: "action",
+                    action: { flow_token: `flow_${Date.now()}_${Math.random().toString(36).substr(2, 6)}` }
+                }]
+            });
+        }
+
+        if (btn.type === 'COPY_CODE') {
+            const codeCol = mapping[`btn_${btn.index}_code`] || mapping['coupon_code'] || mapping['code'];
+            const code = codeCol ? String(contact[codeCol] || 'CODE') : 'CODE';
+            payload.template.components.push({
+                type: "button",
+                sub_type: "copy_code",
+                index: String(btn.index),
+                parameters: [{ type: "coupon_code", coupon_code: code }]
+            });
+        }
+    });
+
+    return payload;
+}
+
+/**
+ * Build a media message payload (image, video, document)
+ */
+function buildMediaPayload(to, type, mediaId, text, filename) {
+    const payload = {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: to,
+        type: type,
+        [type]: { id: mediaId }
+    };
+
+    if (text) payload[type].caption = text;
+    if (type === 'document' && filename) {
+        payload.document.filename = filename;
+    }
+
+    return payload;
+}
+
+// ══════════════════════════════════════════════════════════════
+
+// --- TEMPLATE FETCHING (User Scoped) ---
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -561,158 +715,38 @@ app.post('/api/send', authenticateToken, async (req, res) => {
 
       let wamid = null;
       let msgStatus = 'Pending';
-      let payload = { messaging_product: "whatsapp", recipient_type: "individual", to: cleanPhone };
+      let payload = null;
+
       try {
+        // Modular Construction Logic
         if (messageType === 'text') {
           let text = customMessage || '';
-          Object.keys(contact).forEach(k => text = text.replace(new RegExp(`{{\\s*${escapeRegExp(k)}\\s*}}`, 'gi'), contact[k] || ''));
-          payload.type = "text";
-          payload.text = { body: text };
-        } else {
-          payload.type = "template";
-          payload.template = { 
-            name: template.name, 
-            language: { code: template.language || "en_US" }, 
-            components: [] 
-          };
-
-          const compData = template.componentsData;
-          const isNamed = template.format === 'NAMED';
-
-          // ═══ 1. HEADER COMPONENT ═══
-          if (compData.header.type) {
-            const headerComp = { type: "header", parameters: [] };
-            const typeLower = compData.header.type.toLowerCase();
-
-            if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(compData.header.type)) {
-              if (cachedHeaderMediaId) {
-                const mediaParam = { 
-                  type: typeLower, 
-                  [typeLower]: { id: String(cachedHeaderMediaId) } 
-                };
-                
-                // For NAMED media headers, we must find the parameter name
-                if (isNamed) {
-                  const headerObj = template.rawComponents.find(c => c.type === 'HEADER');
-                  // Meta often stores this in example.header_handle_named_params
-                  const mediaParamName = headerObj?.example?.header_handle_named_params?.[0]?.param_name || 'header_image';
-                  mediaParam.parameter_name = mediaParamName;
-                }
-                headerComp.parameters.push(mediaParam);
-              }
-            } else if (compData.header.type === 'TEXT' && compData.header.variables.length > 0) {
-              compData.header.variables.forEach(variable => {
-                const csvCol = mapping[variable];
-                const val = csvCol ? String(contact[csvCol] || '') : '';
-                const param = { type: "text", text: val || ' ' };
-                if (isNamed) param.parameter_name = variable;
-                headerComp.parameters.push(param);
-              });
-            }
-
-            if (headerComp.parameters.length > 0) {
-              payload.template.components.push(headerComp);
-            }
-          }
-            // Only add header if it has parameters
-            if (headerComp.parameters.length > 0) {
-              payload.template.components.push(headerComp);
-            }
-          }
-
-          // ═══ 2. BODY COMPONENT ═══
-          // Meta docs: type "body" with text parameters for each {{variable}}
-          if (compData.body.variables.length > 0) {
-            const bodyComp = { type: "body", parameters: [] };
-            compData.body.variables.forEach(variable => {
-              const csvCol = mapping[variable];
-              let val = csvCol ? String(contact[csvCol] || '') : '';
-              // Auto-extract first name for "name" variables
-              if (variable.toLowerCase() === 'name' && val.includes(' ')) {
-                val = val.split(' ')[0];
-              }
-              const param = { type: 'text', text: val || ' ' };
-              // NAMED templates require parameter_name = actual variable name
-              if (isNamed) param.parameter_name = variable;
-              bodyComp.parameters.push(param);
-            });
-            payload.template.components.push(bodyComp);
-          }
-
-          // ═══ 3. BUTTON COMPONENTS ═══
-          // Meta docs: each button is a separate component with type "button"
-          compData.buttons.forEach(btn => {
-            // URL buttons with dynamic variables (e.g. https://example.com/{{1}})
-            if (btn.type === 'URL' && btn.variables.length > 0) {
-              const btnComp = { 
-                type: "button", 
-                sub_type: "url", 
-                index: String(btn.index), 
-                parameters: [] 
-              };
-              btn.variables.forEach(variable => {
-                const csvCol = mapping[`btn_${btn.index}_${variable}`] || mapping[variable];
-                const val = csvCol ? String(contact[csvCol] || '') : '';
-                if (val) {
-                  const bParam = { type: "text", text: val };
-                  if (isNamed) bParam.parameter_name = variable;
-                  btnComp.parameters.push(bParam);
-                }
-              });
-              if (btnComp.parameters.length > 0) {
-                payload.template.components.push(btnComp);
-              }
-            }
-
-            // FLOW buttons — require flow_token
-            if (btn.type === 'FLOW') {
-              payload.template.components.push({
-                type: "button",
-                sub_type: "flow",
-                index: String(btn.index),
-                parameters: [{
-                  type: "action",
-                  action: { flow_token: `flow_${Date.now()}_${Math.random().toString(36).substr(2, 6)}` }
-                }]
-              });
-            }
-
-            // COPY_CODE buttons — require coupon_code
-            if (btn.type === 'COPY_CODE') {
-              const codeCol = mapping[`btn_${btn.index}_code`] || mapping['coupon_code'] || mapping['code'];
-              const code = codeCol ? String(contact[codeCol] || 'CODE') : 'CODE';
-              payload.template.components.push({
-                type: "button",
-                sub_type: "copy_code",
-                index: String(btn.index),
-                parameters: [{ type: "coupon_code", coupon_code: code }]
-              });
-            }
-
-            // QUICK_REPLY and PHONE_NUMBER buttons don't need parameters
-            // They are defined in the template itself
+          Object.keys(contact).forEach(k => {
+            text = text.replace(new RegExp(`{{\\s*${escapeRegExp(k)}\\s*}}`, 'gi'), contact[k] || '');
           });
+          payload = buildTextPayload(cleanPhone, text);
+        } else {
+          payload = buildTemplatePayload(cleanPhone, template, mapping, contact, cachedHeaderMediaId);
         }
 
-        // Log the payload for debugging
-        console.log(`[SEND] Payload to ${cleanPhone.substring(0,4)}***:`, JSON.stringify(payload, null, 2));
-        
+        // Dedicated Sending Logic
+        console.log(`[SEND] Payload to ${cleanPhone.substring(0, 4)}***:`, JSON.stringify(payload, null, 2));
+
         const response = await axios.post(`https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`, payload, {
           headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}`, 'Content-Type': 'application/json' }
         });
+        
         msgStatus = 'Sent ✅';
         wamid = response.data.messages?.[0]?.id;
       } catch (err) {
-        // Log the COMPLETE error response from Meta for debugging
+        // Standardized Multi-Tenant Error Handling
         if (err.response?.data) {
           console.error(`[META FULL ERROR] Phone: ${cleanPhone}`, JSON.stringify(err.response.data, null, 2));
         } else {
           console.error(`[ERROR] Phone: ${cleanPhone}`, err.message);
         }
-        
-        const metaError = err.response?.data?.error?.message || err.message;
+
         const subCode = err.response?.data?.error?.error_subcode || err.response?.data?.error?.code;
-        
         if (subCode === 131030) {
           msgStatus = 'Failed ❌ (Not on WhatsApp or Rate Limited)';
         } else {
@@ -1180,7 +1214,11 @@ app.post('/webhook', async (req, res) => {
 // List all chats for user
 app.get('/api/chats', authenticateToken, async (req, res) => {
   try {
-    const dbChats = await Chat.find({ userId: req.user.id }).sort({ updatedAt: -1 });
+    // Only show chats where there is at least one incoming message from the customer
+    const dbChats = await Chat.find({ 
+      userId: req.user.id,
+      "messages.from": "customer" 
+    }).sort({ updatedAt: -1 });
     res.json(dbChats);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch chats' });
@@ -1248,21 +1286,11 @@ app.post('/api/reply', authenticateToken, async (req, res) => {
   }
   
   try {
-    let payload = {
-      messaging_product: "whatsapp",
-      recipient_type: "individual",
-      to: phone,
-      type: type
-    };
-
+    let payload = null;
     if (type === 'text') {
-      payload.text = { body: text };
-    } else if (type === 'image') {
-      payload.image = { id: mediaId, caption: text };
-    } else if (type === 'video') {
-      payload.video = { id: mediaId, caption: text };
-    } else if (type === 'document') {
-      payload.document = { id: mediaId, caption: text, filename: filename || "Attachment" };
+      payload = buildTextPayload(phone, text);
+    } else {
+      payload = buildMediaPayload(phone, type, mediaId, text, filename);
     }
     
     console.log(`[REPLY] Sending ${type} to ${phone}`);
