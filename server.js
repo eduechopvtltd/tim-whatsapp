@@ -1260,9 +1260,11 @@ app.post('/api/reply', authenticateToken, async (req, res) => {
       id: `internal_${Date.now()}`,
       from: 'me',
       name: phone, 
-      text: text || `[${type}]`,
+      text: text || '',
       timestamp: Date.now(),
-      type: type
+      type: type,
+      mediaId: mediaId,
+      filename: filename
     };
 
     await Chat.findOneAndUpdate(

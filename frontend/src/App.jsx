@@ -282,9 +282,17 @@ export default function App() {
 
   const sortedChats = useMemo(() => {
     return [...chats].sort((a, b) => {
-      const dateA = new Date(a.updatedAt || 0).getTime();
-      const dateB = new Date(b.updatedAt || 0).getTime();
-      return dateB - dateA;
+      const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+      const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+      
+      // 1. Primary sort: timestamp (newest first)
+      if (dateB !== dateA) return dateB - dateA;
+      
+      // 2. Secondary sort: unread count (unreads first)
+      if ((b.unreadCount || 0) !== (a.unreadCount || 0)) return (b.unreadCount || 0) - (a.unreadCount || 0);
+      
+      // 3. Stable tertiary sort: phone number (alphabetical)
+      return (a.phone || '').localeCompare(b.phone || '');
     });
   }, [chats]);
 
@@ -468,7 +476,7 @@ export default function App() {
           mediaId = upData.mediaId;
           type = pendingAttachment.type;
           filename = pendingAttachment.file.name;
-          if (!finalChatText) finalChatText = filename; // Fallback text for the chat bubble
+          // No fallback text, let it be empty if user didn't type a caption
         } else {
           throw new Error(upData.error || 'Media upload failed');
         }
@@ -1463,10 +1471,17 @@ function TemplatePreview({ template, mapping, csvHeaders, uploadedMediaId, local
 
 function SidebarLink({ active, onClick, icon: Icon, label, badge }) {
   return (
-    <button onClick={onClick} className={cn("w-full sidebar-item group", active ? "bg-emerald-500 text-black shadow-lg shadow-emerald-500/10" : "text-slate-500 hover:text-white hover:bg-white/[0.03]")}>
+    <button onClick={onClick} className={cn("w-full sidebar-item group relative", active ? "bg-emerald-500 text-black shadow-lg shadow-emerald-500/10" : "text-slate-500 hover:text-white hover:bg-white/[0.03]")}>
       <Icon size={18} weight={active ? "fill" : "bold"} className={cn("transition-transform group-hover:scale-110", active ? "text-black" : "text-slate-600 group-hover:text-emerald-500")} />
       <span className="font-bold flex-1 text-left">{label}</span>
-      {badge && <span className={cn("text-[10px] font-bold", active ? "text-black/60" : "text-emerald-500")}>{badge}</span>}
+      {badge && (
+        <span className={cn(
+          "px-1.5 py-0.5 rounded-full text-[9px] font-black min-w-[18px] text-center shadow-sm",
+          active ? "bg-black/20 text-black" : "bg-emerald-500 text-black border border-emerald-500/20 shadow-emerald-500/10"
+        )}>
+          {badge}
+        </span>
+      )}
     </button>
   );
 }
