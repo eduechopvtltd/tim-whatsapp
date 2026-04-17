@@ -698,6 +698,31 @@ app.post('/api/send', authenticateToken, async (req, res) => {
       }
     }
 
+    // ═══ SMART TEMPLATE DEDUPLICATION ═══
+    // Prevents sending the same template to the same number if they've received it successfully before
+    const campaignNameForDedup = templateName || 'Custom Text Campaign';
+    const alreadySentSet = new Set();
+
+    try {
+        const pastCampaigns = await Campaign.find(
+            { userId, name: campaignNameForDedup },
+            { "results.phone": 1, "results.status": 1 }
+        );
+        pastCampaigns.forEach(c => {
+            c.results.forEach(r => {
+                const s = r.status.toLowerCase();
+                if (s.includes('✅') || s.includes('sent') || s.includes('delivered') || s.includes('read')) {
+                    alreadySentSet.add(r.phone);
+                }
+            });
+        });
+        if (alreadySentSet.size > 0) {
+            console.log(`[DEDUP] Found ${alreadySentSet.size} previous successful recipients for "${campaignNameForDedup}". They will be skipped.`);
+        }
+    } catch (dedupErr) {
+        console.error('[DEDUP ERROR] Failed to fetch history:', dedupErr.message);
+    }
+
     for (let contact of validContacts) {
       if (userJobs[jobId].stopped) break;
 
@@ -712,6 +737,20 @@ app.post('/api/send', authenticateToken, async (req, res) => {
       const phone = String(contact[mapping.phone] || '').trim();
       let cleanPhone = phone.replace(/\D/g, '');
       if (cleanPhone.length === 10) cleanPhone = '91' + cleanPhone;
+
+      // SKIP LOGIC: Deduplication
+      if (alreadySentSet.has(cleanPhone)) {
+        userJobs[jobId].results.push({
+            name: mapping.name ? contact[mapping.name] : 'Unknown',
+            phone: cleanPhone || phone || 'N/A',
+            status: 'Skipped ✅ (Duplicate)',
+            wamid: 'skipped_' + Date.now(),
+            details: { info: 'Already received this template in a previous campaign' }
+        });
+        userJobs[jobId].processed += 1;
+        console.log(`[DEDUP] Skipping duplicate recipient: ${cleanPhone}`);
+        continue;
+      }
 
       let wamid = null;
       let msgStatus = 'Pending';
