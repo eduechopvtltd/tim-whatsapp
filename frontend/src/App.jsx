@@ -101,6 +101,7 @@ export default function App() {
   const [replyText, setReplyText] = useState('');
   const [isSendingReply, setIsSendingReply] = useState(false);
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
+  const [pendingAttachment, setPendingAttachment] = useState(null);
 
   // ═══════════ AUTH FUNCTIONS ═══════════
   const handleAuth = async (e) => {
@@ -446,54 +447,69 @@ export default function App() {
 
   const handleSendReply = async (e) => {
     e.preventDefault();
-    if (!activeChatPhone || !replyText.trim() || isSendingReply) return;
+    if (!activeChatPhone || isSendingReply) return;
+    if (!replyText.trim() && !pendingAttachment) return;
+    
     setIsSendingReply(true);
     try {
-      const res = await fetchWithAuth(`${API_BASE}/api/reply`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: activeChatPhone, text: replyText }) });
+      let mediaId = null;
+      let type = 'text';
+      let filename = null;
+      let finalChatText = replyText;
+
+      // Handle Attachment if staged
+      if (pendingAttachment) {
+        const formData = new FormData();
+        formData.append('media', pendingAttachment.file);
+        const upRes = await fetchWithAuth(`${API_BASE}/api/upload-media`, { method: 'POST', body: formData });
+        const upData = await upRes.json();
+        
+        if (upData.mediaId) {
+          mediaId = upData.mediaId;
+          type = pendingAttachment.type;
+          filename = pendingAttachment.file.name;
+          if (!finalChatText) finalChatText = filename; // Fallback text for the chat bubble
+        } else {
+          throw new Error(upData.error || 'Media upload failed');
+        }
+      }
+
+      const res = await fetchWithAuth(`${API_BASE}/api/reply`, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ 
+          phone: activeChatPhone, 
+          text: finalChatText,
+          type,
+          mediaId,
+          filename
+        }) 
+      });
+
       if (res.ok) {
         setReplyText('');
+        setPendingAttachment(null);
         const histRes = await fetchWithAuth(`${API_BASE}/api/chats/${activeChatPhone}`);
         const histData = await histRes.json();
         if (Array.isArray(histData)) setActiveChatHistory(histData);
-      } else { const err = await res.json(); alert(`Reply failed: ${err.error || 'Unknown error'}`); }
-    } catch (err) { alert('Network error while sending reply'); }
+      } else { 
+        const err = await res.json(); 
+        alert(`Reply failed: ${err.error || 'Unknown error'}`); 
+      }
+    } catch (err) { 
+      alert(err.message || 'Network error while sending reply'); 
+    }
     finally { setIsSendingReply(false); }
   };
 
-  const handleInboxMediaUpload = async (file, type) => {
-    if (!activeChatPhone || !file || isSendingReply) return;
-    setIsSendingReply(true);
+  const handleSelectAttachment = (file, type) => {
+    if (!file) return;
+    const previewUrl = type === 'image' ? URL.createObjectURL(file) : null;
+    setPendingAttachment({ file, type, previewUrl });
     setShowAttachmentMenu(false);
-    try {
-      const formData = new FormData();
-      formData.append('media', file);
-      const upRes = await fetchWithAuth(`${API_BASE}/api/upload-media`, { method: 'POST', body: formData });
-      const upData = await upRes.json();
-      if (upData.mediaId) {
-        await fetchWithAuth(`${API_BASE}/api/reply`, { 
-          method: 'POST', 
-          headers: {'Content-Type': 'application/json'}, 
-          body: JSON.stringify({ 
-            phone: activeChatPhone, 
-            type: type, 
-            mediaId: upData.mediaId, 
-            text: file.name,
-            filename: file.name // Specifically for documents
-          }) 
-        });
-        // Success: Refresh history
-        const hr = await fetchWithAuth(`${API_BASE}/api/chats/${activeChatPhone}`);
-        const hd = await hr.json();
-        if (Array.isArray(hd)) setActiveChatHistory(hd);
-      } else {
-        alert(`Upload failed: ${upData.error || 'Check Meta settings'}`);
-      }
-    } catch (err) {
-      alert('Network error during media upload');
-    } finally {
-      setIsSendingReply(false);
-    }
   };
+
+
 
   function downloadBlob(content, filename) {
     const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
@@ -1108,9 +1124,45 @@ export default function App() {
                             </div>
                             <div className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-4 custom-scrollbar flex flex-col">
                                {activeChatHistory.map((msg, i) => (
-                                  <div key={i} className={cn("max-w-[85%] sm:max-w-[70%] flex flex-col", msg.from === 'me' ? "self-end items-end" : "self-start items-start")}>
-                                     <div className={cn("px-4 py-3 rounded-2xl text-[13px] font-medium leading-relaxed shadow-sm whitespace-pre-wrap break-words", msg.from === 'me' ? "bg-emerald-500 text-black rounded-tr-none" : "bg-white/5 text-slate-200 border border-border-dim rounded-tl-none")}>
-                                        {msg.text}
+                                  <div key={i} className={cn("max-w-[85%] sm:max-w-[70%] flex flex-col", (msg.from === 'me' || msg.from === 'bot') ? "self-end items-end" : "self-start items-start")}>
+                                     <div className={cn(
+                                       "px-4 py-3 rounded-2xl text-[13px] font-medium leading-relaxed shadow-sm whitespace-pre-wrap break-words overflow-hidden", 
+                                       (msg.from === 'me' || msg.from === 'bot') ? "bg-emerald-500 text-black rounded-tr-none" : "bg-white/5 text-slate-200 border border-border-dim rounded-tl-none")}>
+                                        
+                                        {/* MEDIA CONTENT */}
+                                        {msg.type === 'image' && (
+                                           <div className="mb-2 -mx-1 -mt-1 rounded-xl overflow-hidden bg-black/20">
+                                              {msg.mediaUrl ? (
+                                                 <img src={msg.mediaUrl} alt="msg" className="max-w-full h-auto object-cover max-h-64" />
+                                              ) : (
+                                                 <div className="p-4 flex items-center gap-2 text-[10px] font-bold opacity-50"><ImageSquare size={16} /> Image Received</div>
+                                              )}
+                                           </div>
+                                        )}
+                                        {msg.type === 'video' && (
+                                           <div className="mb-2 -mx-1 -mt-1 rounded-xl overflow-hidden bg-black/20">
+                                              {msg.mediaUrl ? (
+                                                 <video controls src={msg.mediaUrl} className="max-w-full h-auto max-h-64" />
+                                              ) : (
+                                                 <div className="p-4 flex items-center gap-2 text-[10px] font-bold opacity-50"><VideoCamera size={16} /> Video Received</div>
+                                              )}
+                                           </div>
+                                        )}
+                                        {msg.type === 'document' && (
+                                           <div className="mb-2 p-3 bg-black/10 rounded-xl flex items-center gap-3 border border-white/5">
+                                              <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-500"><FileText size={20} /></div>
+                                              <div className="min-w-0 flex-1">
+                                                 <p className="text-[11px] font-bold truncate">{msg.filename || msg.text || 'Document'}</p>
+                                                 <p className="text-[9px] opacity-50 uppercase tracking-widest font-bold">PDF / DOC</p>
+                                              </div>
+                                           </div>
+                                        )}
+
+                                        {/* TEXT CONTENT */}
+                                        {(msg.type === 'text' || !msg.type) && msg.text}
+                                        {msg.type !== 'text' && msg.type && msg.text && msg.text !== msg.filename && (
+                                           <div className="mt-2 pt-2 border-t border-black/5">{msg.text}</div>
+                                        )}
                                      </div>
                                      <span className="text-[8px] font-bold text-slate-600 mt-1.5 uppercase tracking-widest px-1">{msg.timestamp ? new Date(parseInt(msg.timestamp)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
                                   </div>
@@ -1138,9 +1190,35 @@ export default function App() {
                                            Document
                                         </button>
 
-                                        <input id="inbox-img" type="file" className="hidden" accept="image/*" onChange={(e) => handleInboxMediaUpload(e.target.files[0], 'image')} />
-                                        <input id="inbox-vid" type="file" className="hidden" accept="video/*" onChange={(e) => handleInboxMediaUpload(e.target.files[0], 'video')} />
-                                        <input id="inbox-doc" type="file" className="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx" onChange={(e) => handleInboxMediaUpload(e.target.files[0], 'document')} />
+                                        <input id="inbox-img" type="file" className="hidden" accept="image/*" onChange={(e) => handleSelectAttachment(e.target.files[0], 'image')} />
+                                        <input id="inbox-vid" type="file" className="hidden" accept="video/*" onChange={(e) => handleSelectAttachment(e.target.files[0], 'video')} />
+                                        <input id="inbox-doc" type="file" className="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx" onChange={(e) => handleSelectAttachment(e.target.files[0], 'document')} />
+                                     </motion.div>
+                                  )}
+                               </AnimatePresence>
+
+                               <AnimatePresence>
+                                  {pendingAttachment && (
+                                     <motion.div 
+                                       initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                                       animate={{ opacity: 1, scale: 1, y: 0 }}
+                                       exit={{ opacity: 0, scale: 0.9, y: 10 }}
+                                       className="mx-2 mb-4 p-3 bg-bg-surface border border-border-dim rounded-2xl flex items-center gap-4 relative group"
+                                     >
+                                        <div className="w-12 h-12 rounded-lg bg-black/20 overflow-hidden flex items-center justify-center border border-white/5">
+                                           {pendingAttachment.previewUrl ? (
+                                              <img src={pendingAttachment.previewUrl} className="w-full h-full object-cover" />
+                                           ) : (
+                                              <div className="text-emerald-500"><FileText size={24} /></div>
+                                           )}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                           <p className="text-xs font-bold text-white truncate">{pendingAttachment.file.name}</p>
+                                           <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">{pendingAttachment.type}</p>
+                                        </div>
+                                        <button type="button" onClick={() => setPendingAttachment(null)} className="p-2 hover:bg-white/5 text-slate-500 hover:text-red-500 rounded-full transition-all">
+                                           <X size={16} />
+                                        </button>
                                      </motion.div>
                                   )}
                                </AnimatePresence>
@@ -1157,7 +1235,7 @@ export default function App() {
                                      <Paperclip size={18} weight={showAttachmentMenu ? "bold" : "regular"} />
                                   </button>
                                   <textarea value={replyText} onChange={e => { setReplyText(e.target.value); if(showAttachmentMenu) setShowAttachmentMenu(false); }} placeholder="Type a message..." className="flex-1 bg-bg-base border border-border-dim rounded-2xl p-3 lg:p-4 text-[13px] font-medium text-white outline-none focus:border-emerald-500/30 resize-none min-h-[48px] max-h-32 transition-all" onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendReply(e); } }} />
-                                  <button type="submit" disabled={!replyText.trim() || isSendingReply} className="h-12 w-12 lg:h-14 lg:w-14 flex items-center justify-center bg-emerald-500 text-black rounded-2xl transition-all shadow-lg shadow-emerald-500/10 disabled:opacity-50">
+                                  <button type="submit" disabled={isSendingReply || (!replyText.trim() && !pendingAttachment)} className="h-12 w-12 lg:h-14 lg:w-14 flex items-center justify-center bg-emerald-500 text-black rounded-2xl transition-all shadow-lg shadow-emerald-500/10 disabled:opacity-50">
                                      {isSendingReply ? <ArrowsClockwise size={18} className="animate-spin" /> : <PaperPlaneTilt size={20} weight="bold" />}
                                   </button>
                                </div>

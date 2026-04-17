@@ -1172,12 +1172,36 @@ app.get('/api/chats', authenticateToken, async (req, res) => {
   }
 });
 
-// Get specific chat history
+// Get specific chat history with media syncing
 app.get('/api/chats/:phone', authenticateToken, async (req, res) => {
   try {
     const chat = await Chat.findOne({ userId: req.user.id, phone: req.params.phone });
-    res.json(chat ? chat.messages : []);
+    if (!chat || !chat.messages.length) return res.json([]);
+
+    const user = await User.findById(req.user.id);
+    const token = user?.config?.token;
+    
+    // Enrich messages with fresh media URLs if needed
+    const enrichedMessages = await Promise.all(chat.messages.map(async (msg) => {
+      // If it's a media message and we have an access token, try to resolve a fresh URL
+      if (msg.mediaId && token && msg.type !== 'text') {
+        try {
+          const metaRes = await axios.get(`https://graph.facebook.com/v21.0/${msg.mediaId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (metaRes.data && metaRes.data.url) {
+            return { ...msg.toObject(), mediaUrl: metaRes.data.url };
+          }
+        } catch (metaErr) {
+          console.warn(`[META MEDIA SYNC] Failed to fetch URL for ID ${msg.mediaId}:`, metaErr.message);
+        }
+      }
+      return msg;
+    }));
+
+    res.json(enrichedMessages);
   } catch (err) {
+    console.error('[API] Chat history error:', err.message);
     res.status(500).json({ error: 'Failed to fetch chat details' });
   }
 });
