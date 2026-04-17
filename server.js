@@ -551,6 +551,9 @@ app.post('/api/send', authenticateToken, async (req, res) => {
           payload.template.components = components;
         }
 
+        // DEBUG: Log the exact payload being sent to Meta
+        console.log(`[SEND] To: ${cleanPhone.substring(0, 4)}***`, JSON.stringify(payload.template?.components || 'text-mode', null, 2));
+
         const response = await axios.post(`https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`, payload, {
           headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}`, 'Content-Type': 'application/json' }
         });
