@@ -474,115 +474,106 @@ app.post('/api/send', authenticateToken, async (req, res) => {
             components: [] 
           };
 
-          const components = [];
-          
-          const getVal = (vKey) => {
-            const mapVal = mapping[vKey] || mapping[`Header Var ${vKey}`] || mapping[`Body Var ${vKey}`] || mapping[`Footer Var ${vKey}`] || mapping[`Variable: ${vKey}`] || mapping[`btn_${vKey}`] || '';
-            return String(contact[mapVal] || '');
-          };
+          const compData = template.componentsData;
 
           // 1. Header Component
-          if (template.componentsData.header.type) {
-            const hType = template.componentsData.header.type;
-            if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(hType)) {
-              // CRITICAL: Template messages MUST use Media ID, never URL links.
-              // Using {link: url} causes WhatsApp to show a link preview card (Portuguese text).
-              // Always use {id: mediaId} to avoid this.
-              let mediaId = cachedHeaderMediaId;
-
-              // If we somehow still have a URL instead of a Media ID, upload it now
-              if (mediaId && String(mediaId).startsWith('http')) {
-                try {
-                  console.log(`[HEADER] URL detected instead of Media ID, uploading...`);
-                  const dlRes = await axios.get(mediaId, { responseType: 'arraybuffer' });
-                  const dlBuffer = Buffer.from(dlRes.data);
-                  const dlType = dlRes.headers['content-type'] || 'image/jpeg';
-                  const dlExt = mime.extension(dlType) || 'jpg';
-                  const dlDir = path.join(__dirname, 'uploads');
-                  if (!fs.existsSync(dlDir)) fs.mkdirSync(dlDir, { recursive: true });
-                  const dlPath = path.join(dlDir, `hdr_${Date.now()}.${dlExt}`);
-                  fs.writeFileSync(dlPath, dlBuffer);
-
-                  const dlForm = new FormData();
-                  dlForm.append('messaging_product', 'whatsapp');
-                  dlForm.append('file', fs.createReadStream(dlPath), { filename: `header.${dlExt}`, contentType: dlType });
-                  const dlUpload = await axios.post(
-                    `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/media`, dlForm,
-                    { headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}`, ...dlForm.getHeaders() } }
-                  );
-                  mediaId = dlUpload.data.id;
-                  console.log(`[HEADER] Converted URL to Media ID: ${mediaId}`);
-                  try { fs.unlinkSync(dlPath); } catch(e) {}
-                } catch (convErr) {
-                  console.error(`[HEADER] URL-to-MediaID conversion failed:`, convErr.response?.data || convErr.message);
-                  mediaId = null;
+          if (compData.header.type) {
+            const headerComp = { type: "header", parameters: [] };
+            
+            if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(compData.header.type)) {
+              const typeLower = compData.header.type.toLowerCase();
+              
+              // ALWAYS use {id: mediaId} — never {link: URL} to prevent Portuguese link preview text
+              if (cachedHeaderMediaId) {
+                // If somehow we still have a URL, convert it to media ID first
+                let mediaId = cachedHeaderMediaId;
+                if (String(mediaId).startsWith('http')) {
+                  try {
+                    console.log(`[HEADER] URL detected, converting to Media ID...`);
+                    const dlRes = await axios.get(mediaId, { responseType: 'arraybuffer' });
+                    const dlBuffer = Buffer.from(dlRes.data);
+                    const dlType = dlRes.headers['content-type'] || 'image/jpeg';
+                    const dlExt = mime.extension(dlType) || 'jpg';
+                    const dlDir = path.join(__dirname, 'uploads');
+                    if (!fs.existsSync(dlDir)) fs.mkdirSync(dlDir, { recursive: true });
+                    const dlPath = path.join(dlDir, `hdr_${Date.now()}.${dlExt}`);
+                    fs.writeFileSync(dlPath, dlBuffer);
+                    const dlForm = new FormData();
+                    dlForm.append('messaging_product', 'whatsapp');
+                    dlForm.append('file', fs.createReadStream(dlPath), { filename: `header.${dlExt}`, contentType: dlType });
+                    const dlUpload = await axios.post(
+                      `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/media`, dlForm,
+                      { headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}`, ...dlForm.getHeaders() } }
+                    );
+                    mediaId = dlUpload.data.id;
+                    cachedHeaderMediaId = mediaId; // Cache for next contacts
+                    console.log(`[HEADER] Converted URL → Media ID: ${mediaId}`);
+                    try { fs.unlinkSync(dlPath); } catch(e) {}
+                  } catch (convErr) {
+                    console.error(`[HEADER] URL→MediaID failed:`, convErr.response?.data || convErr.message);
+                    mediaId = null;
+                  }
+                }
+                if (mediaId) {
+                  headerComp.parameters.push({ type: typeLower, [typeLower]: { id: mediaId } });
                 }
               }
+            } else if (compData.header.type === 'TEXT' && compData.header.variables.length > 0) {
+              compData.header.variables.forEach((variable, idx) => {
+                const val = String(contact[mapping[variable]] || '');
+                headerComp.parameters.push({ type: "text", text: val || ' ' });
+              });
+            }
 
-              if (mediaId) {
-                const typeLower = hType.toLowerCase();
-                console.log(`[HEADER] Sending ${hType} with Media ID: ${mediaId}`);
-                components.push({
-                  type: "header",
-                  parameters: [{ 
-                    type: typeLower, 
-                    [typeLower]: { id: mediaId }
-                  }]
-                });
-              }
-              // If no media ID at all, DON'T push a header — this prevents the Portuguese text
-            } else if (template.componentsData.header.variables.length > 0) {
-              const params = template.componentsData.header.variables.map(v => ({
-                type: "text",
-                text: getVal(v) || 'Trip In Minutes'
-              }));
-              components.push({ type: "header", parameters: params });
+            if (headerComp.parameters.length > 0) {
+              payload.template.components.push(headerComp);
             }
           }
 
-          // 2. Body Component
-          if (template.componentsData.body.variables.length > 0) {
-            const params = template.componentsData.body.variables.map(v => ({
-              type: "text",
-              text: getVal(v) || ' ' 
-            }));
-            components.push({ type: "body", parameters: params });
+          // 2. Body Component (exact old working format)
+          if (compData.body.variables.length > 0) {
+            const bodyComp = { type: "body", parameters: [] };
+            compData.body.variables.forEach((variable, idx) => {
+              let val = String(contact[mapping[variable]] || '');
+              if (variable.toLowerCase() === 'name') val = val.split(' ')[0];
+              
+              const param = { type: 'text', text: val || ' ' };
+              if (template.format === 'NAMED' && compData.body.portalNames[idx]) {
+                param.parameter_name = compData.body.portalNames[idx];
+              }
+              bodyComp.parameters.push(param);
+            });
+            payload.template.components.push(bodyComp);
           }
 
-          // 3. Footer Component
-          if (template.componentsData.footer.variables.length > 0) {
-            const params = template.componentsData.footer.variables.map(v => ({
-              type: "text",
-              text: getVal(v) || ' '
-            }));
-            components.push({ type: "footer", parameters: params });
-          }
-
-          // 4. Button Components
-          template.componentsData.buttons.forEach((btn, idx) => {
+          // 3. Button Components (exact old working format)
+          compData.buttons.forEach((btn, idx) => {
             if (btn.type === 'URL' && btn.variables.length > 0) {
-              const params = btn.variables.map(v => {
-                const vKey = `btn_${idx}_${v}`;
-                const mapVal = mapping[vKey] || mapping[`Btn ${idx} Var ${v}`] || mapping[`Variable: ${v}`] || mapping['url_suffix'] || '';
-                let val = '';
-                if (mapVal.startsWith('fixed:')) val = mapVal.replace('fixed:', '');
-                else val = String(contact[mapVal] || '');
-                
-                return {
-                  type: "text",
-                  text: val || ' '
-                };
+              const btnComp = { type: "button", sub_type: "url", index: idx.toString(), parameters: [] };
+              const val = String(contact[mapping[`btn_${idx}_${btn.variables[0]}`]] || contact[mapping[`button_${idx}_url_suffix`]] || '');
+              if (val) {
+                btnComp.parameters.push({ type: "text", text: val });
+                payload.template.components.push(btnComp);
+              }
+            }
+
+            if (btn.type === 'FLOW') {
+              payload.template.components.push({
+                type: "button",
+                sub_type: "flow",
+                index: idx.toString(),
+                parameters: [{
+                  type: "action",
+                  action: { flow_token: `token_${Date.now()}_${Math.floor(Math.random() * 1000)}` }
+                }]
               });
-              components.push({ type: "button", sub_type: "url", index: idx.toString(), parameters: params });
             }
           });
-
-          payload.template.components = components;
         }
 
-        // DEBUG: Log the exact payload being sent to Meta
-        console.log(`[SEND] To: ${cleanPhone.substring(0, 4)}***`, JSON.stringify(payload.template?.components || 'text-mode', null, 2));
-
+        // Log the FULL payload for debugging
+        console.log(`[SEND] Payload to ${cleanPhone.substring(0,4)}***:`, JSON.stringify(payload, null, 2));
+        
         try {
           const response = await axios.post(`https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`, payload, {
             headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}`, 'Content-Type': 'application/json' }
@@ -590,30 +581,41 @@ app.post('/api/send', authenticateToken, async (req, res) => {
           msgStatus = 'Sent ✅';
           wamid = response.data.messages?.[0]?.id;
         } catch (firstErr) {
-          // Fallback: If parameter format fails (Error 132012), retry without parameter_name
+          // Check for specific Error 132012 "Parameter format does not match"
           const errorCode = firstErr.response?.data?.error?.error_subcode || firstErr.response?.data?.error?.code;
+          
           if (errorCode === 132012 || errorCode === 100) {
-            console.log(`[FALLBACK] Parameter error (${errorCode}), retrying with positional params for ${cleanPhone.substring(0,4)}***`);
+            console.log(`[FALLBACK] Error ${errorCode}, retrying without parameter_name for ${cleanPhone.substring(0,4)}***`);
+            
+            // Create a fallback payload WITHOUT parameter_name
             const fallbackPayload = JSON.parse(JSON.stringify(payload));
             if (fallbackPayload.template && fallbackPayload.template.components) {
               fallbackPayload.template.components.forEach(comp => {
-                if (comp.parameters) comp.parameters.forEach(p => delete p.parameter_name);
+                if (comp.parameters) {
+                  comp.parameters.forEach(p => delete p.parameter_name);
+                }
               });
             }
+
             const response = await axios.post(`https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`, fallbackPayload, {
               headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}`, 'Content-Type': 'application/json' }
             });
             msgStatus = 'Sent ✅';
             wamid = response.data.messages?.[0]?.id;
           } else {
-            throw firstErr;
+            throw firstErr; // Rethrow other errors
           }
         }
       } catch (err) {
-        msgStatus = `Failed: ${err.message}`;
-        if (err.response?.data?.error) {
-           console.error('[META ERROR]', JSON.stringify(err.response.data.error, null, 2));
-           msgStatus = `Failed: ${err.response.data.error.message}`;
+        // Detailed Meta Graph API error parsing
+        const metaError = err.response?.data?.error?.message || err.message;
+        const subCode = err.response?.data?.error?.error_subcode || err.response?.data?.error?.code;
+        
+        if (subCode === 131030) {
+          msgStatus = 'Failed ❌ (Not on WhatsApp or Rate Limited)';
+        } else {
+          const metaErrObj = err.response?.data?.error;
+          msgStatus = metaErrObj ? `Failed: ${mapMetaError(metaErrObj)}` : `Failed: ${err.message}`;
         }
       }
 
