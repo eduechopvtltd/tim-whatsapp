@@ -397,8 +397,8 @@ export default function App() {
       const resp = await fetchWithAuth(`${API_BASE}/api/upload-media`, { method: 'POST', body: formData });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || 'Upload failed');
-      setUploadedMediaId(data.media_id);
-      setMapping(prev => ({ ...prev, header_media_url: data.media_id }));
+      setUploadedMediaId(data.mediaId);
+      setMapping(prev => ({ ...prev, header_media_url: data.mediaId }));
       setStatus('Media uploaded successfully!');
     } catch (err) { setStatus(`Media upload failed: ${err.message}`); setLocalMediaUrl(null); }
     finally { setIsUploadingMedia(false); }

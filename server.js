@@ -580,21 +580,27 @@ app.post('/api/send', authenticateToken, async (req, res) => {
           const isNamed = template.format === 'NAMED';
 
           // ═══ 1. HEADER COMPONENT ═══
-          // Meta docs: type "header" with parameters based on header format
           if (compData.header.type) {
             const headerComp = { type: "header", parameters: [] };
+            const typeLower = compData.header.type.toLowerCase();
 
             if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(compData.header.type)) {
-              // Media header — use {id: mediaId} (NEVER {link: url})
-              const typeLower = compData.header.type.toLowerCase();
               if (cachedHeaderMediaId) {
-                headerComp.parameters.push({ 
+                const mediaParam = { 
                   type: typeLower, 
                   [typeLower]: { id: String(cachedHeaderMediaId) } 
-                });
+                };
+                
+                // For NAMED media headers, we must find the parameter name
+                if (isNamed) {
+                  const headerObj = template.rawComponents.find(c => c.type === 'HEADER');
+                  // Meta often stores this in example.header_handle_named_params
+                  const mediaParamName = headerObj?.example?.header_handle_named_params?.[0]?.param_name || 'header_image';
+                  mediaParam.parameter_name = mediaParamName;
+                }
+                headerComp.parameters.push(mediaParam);
               }
             } else if (compData.header.type === 'TEXT' && compData.header.variables.length > 0) {
-              // Text header with variables like "Hello {{1}}" or "Hello {{name}}"
               compData.header.variables.forEach(variable => {
                 const csvCol = mapping[variable];
                 const val = csvCol ? String(contact[csvCol] || '') : '';
@@ -603,6 +609,11 @@ app.post('/api/send', authenticateToken, async (req, res) => {
                 headerComp.parameters.push(param);
               });
             }
+
+            if (headerComp.parameters.length > 0) {
+              payload.template.components.push(headerComp);
+            }
+          }
             // Only add header if it has parameters
             if (headerComp.parameters.length > 0) {
               payload.template.components.push(headerComp);
@@ -642,7 +653,11 @@ app.post('/api/send', authenticateToken, async (req, res) => {
               btn.variables.forEach(variable => {
                 const csvCol = mapping[`btn_${btn.index}_${variable}`] || mapping[variable];
                 const val = csvCol ? String(contact[csvCol] || '') : '';
-                if (val) btnComp.parameters.push({ type: "text", text: val });
+                if (val) {
+                  const bParam = { type: "text", text: val };
+                  if (isNamed) bParam.parameter_name = variable;
+                  btnComp.parameters.push(bParam);
+                }
               });
               if (btnComp.parameters.length > 0) {
                 payload.template.components.push(btnComp);
