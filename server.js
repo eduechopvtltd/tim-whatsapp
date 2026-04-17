@@ -270,6 +270,102 @@ app.get('/api/templates', authenticateToken, async (req, res) => {
   }
 });
 
+// ═══ DEBUG ENDPOINT: Shows RAW template data from Meta + parsed structure ═══
+app.get('/api/debug-template/:name', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    
+    const { token, wabaId, phoneId } = user.config;
+    
+    // Get RAW templates from Meta
+    const response = await axios.get(`https://graph.facebook.com/v21.0/${wabaId}/message_templates`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    const rawTemplate = response.data.data.find(t => t.name === req.params.name);
+    if (!rawTemplate) return res.status(404).json({ error: `Template '${req.params.name}' not found` });
+    
+    // Get parsed version
+    const parsed = (await getMetaTemplatesForUser(wabaId, token)).find(t => t.name === req.params.name);
+    
+    res.json({
+      raw_from_meta: rawTemplate,
+      parsed_by_server: parsed,
+      user_config: {
+        phoneId: phoneId ? `${phoneId.substring(0,6)}***` : 'MISSING',
+        wabaId: wabaId ? `${wabaId.substring(0,6)}***` : 'MISSING',
+        tokenPresent: !!token
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message, details: err.response?.data });
+  }
+});
+
+// ═══ DEBUG: Test-build payload without sending ═══
+app.post('/api/debug-payload', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    
+    const { contacts, templateName, mapping } = req.body;
+    const { token, wabaId, phoneId } = user.config;
+    
+    const templates = await getMetaTemplatesForUser(wabaId, token);
+    const template = templates.find(t => t.name === templateName);
+    if (!template) return res.json({ error: 'Template not found', availableTemplates: templates.map(t => t.name) });
+    
+    // Build a sample payload for the first contact
+    const contact = contacts[0] || {};
+    const compData = template.componentsData;
+    
+    const components = [];
+    
+    // Header
+    if (compData.header.type && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(compData.header.type)) {
+      const typeLower = compData.header.type.toLowerCase();
+      components.push({
+        type: "header",
+        parameters: [{ type: typeLower, [typeLower]: { id: mapping.header_media_url || 'MISSING_MEDIA_ID' } }]
+      });
+    }
+    
+    // Body
+    if (compData.body.variables.length > 0) {
+      const bodyParams = compData.body.variables.map((v, idx) => {
+        const csvCol = mapping[v];
+        const val = csvCol ? contact[csvCol] : undefined;
+        return {
+          variable: v,
+          mapping_key: v,
+          mapping_value: csvCol || 'NOT_MAPPED',
+          csv_value: val || 'NOT_FOUND',
+          final_param: { type: 'text', text: String(val || ' ') }
+        };
+      });
+      components.push({ type: "body", variables_debug: bodyParams });
+    }
+    
+    res.json({
+      template_name: template.name,
+      template_language: template.language,
+      template_format: template.format,
+      header_type: compData.header.type,
+      header_imageUrl: compData.header.imageUrl ? 'PRESENT' : 'MISSING',
+      header_media_id: mapping.header_media_url || 'NOT_SET',
+      body_variables: compData.body.variables,
+      mapping_keys: Object.keys(mapping),
+      mapping_object: mapping,
+      sample_contact: contact,
+      components_debug: components
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 
 // Media Upload endpoint (User Scoped)
 app.post('/api/upload-media', authenticateToken, upload.single('media'), async (req, res) => {
@@ -384,6 +480,23 @@ app.post('/api/send', authenticateToken, async (req, res) => {
     if (messageType !== 'text') {
       const templates = await getMetaTemplatesForUser(user.config.wabaId, user.config.token);
       template = templates.find(t => t.name === templateName);
+    }
+
+    // ═══ CAMPAIGN DIAGNOSTICS ═══
+    if (template) {
+      console.log(`[CAMPAIGN START] Template: ${template.name}`);
+      console.log(`[CAMPAIGN START] Format: ${template.format}`);
+      console.log(`[CAMPAIGN START] Language: ${template.language}`);
+      console.log(`[CAMPAIGN START] Header type: ${template.componentsData.header.type || 'NONE'}`);
+      console.log(`[CAMPAIGN START] Header imageUrl: ${template.componentsData.header.imageUrl ? 'PRESENT' : 'MISSING'}`);
+      console.log(`[CAMPAIGN START] Body variables: ${JSON.stringify(template.componentsData.body.variables)}`);
+      console.log(`[CAMPAIGN START] Body portalNames: ${JSON.stringify(template.componentsData.body.portalNames)}`);
+      console.log(`[CAMPAIGN START] Buttons: ${JSON.stringify(template.componentsData.buttons.map(b => b.type))}`);
+      console.log(`[CAMPAIGN START] Mapping keys: ${JSON.stringify(Object.keys(mapping))}`);
+      console.log(`[CAMPAIGN START] Mapping object: ${JSON.stringify(mapping)}`);
+      console.log(`[CAMPAIGN START] header_media_url from mapping: ${mapping.header_media_url || 'NOT SET'}`);
+      console.log(`[CAMPAIGN START] Contacts count: ${validContacts.length}`);
+      console.log(`[CAMPAIGN START] Sample contact keys: ${JSON.stringify(Object.keys(validContacts[0] || {}))}`);
     }
 
     // ═══ AUTO-DOWNLOAD TEMPLATE HEADER MEDIA ═══
@@ -607,7 +720,13 @@ app.post('/api/send', authenticateToken, async (req, res) => {
           }
         }
       } catch (err) {
-        // Detailed Meta Graph API error parsing
+        // Log the COMPLETE error response from Meta for debugging
+        if (err.response?.data) {
+          console.error(`[META FULL ERROR] Phone: ${cleanPhone}`, JSON.stringify(err.response.data, null, 2));
+        } else {
+          console.error(`[ERROR] Phone: ${cleanPhone}`, err.message);
+        }
+        
         const metaError = err.response?.data?.error?.message || err.message;
         const subCode = err.response?.data?.error?.error_subcode || err.response?.data?.error?.code;
         
