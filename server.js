@@ -259,13 +259,11 @@ app.get('/api/templates', authenticateToken, async (req, res) => {
   }
 });
 
-// ═══ DEBUG ENDPOINT (temporarily no auth — remove after debugging) ═══
-app.get('/api/debug-template/:name', async (req, res) => {
+// ═══ DEBUG ENDPOINT: Shows RAW template data from Meta + parsed structure ═══
+app.get('/api/debug-template/:name', authenticateToken, async (req, res) => {
   try {
-    // Get first user from DB for debugging
-    const users = await User.find({});
-    const user = users[0];
-    if (!user) return res.status(404).json({ error: 'No users found' });
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
     
     const { token, wabaId, phoneId } = user.config;
     
