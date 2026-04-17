@@ -27,7 +27,9 @@ const ChatSchema = new mongoose.Schema({
         text: String,
         timestamp: String,
         type: { type: String, default: 'text' },
-        status: { type: String }
+        status: { type: String },
+        mediaId: { type: String },
+        filename: { type: String }
     }],
     unreadCount: { type: Number, default: 0 }
 }, { timestamps: true });
@@ -75,8 +77,6 @@ const WamidMappingSchema = new mongoose.Schema({
     phone: { type: String, required: true },
     createdAt: { type: Date, default: Date.now, expires: '48h' } // Auto-delete after 48 hours
 });
-
-WamidMappingSchema.index({ wamid: 1 });
 
 module.exports = {
     User: mongoose.model('User', UserSchema),
