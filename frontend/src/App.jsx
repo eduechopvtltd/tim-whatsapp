@@ -1058,10 +1058,10 @@ export default function App() {
                    {jobStatus ? (
                      <>
                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
-                          <MiniStat label="Processed" value={`${jobStatus.processed || 0}/${jobStatus.total || 0}`} />
+                          <MiniStat label="Processed" value={`${jobStatus.processed || 0}/${jobStatus.totalContacts || jobStatus.total || 0}`} />
                           <MiniStat label="Sent" value={jobStatus.results?.filter(r => r.status?.includes('Sent') || r.status?.includes('Delivered') || r.status?.includes('Read')).length || 0} color="text-emerald-500" />
                           <MiniStat label="Failed" value={jobStatus.results?.filter(r => r.status?.includes('Failed')).length || 0} color="text-red-500" />
-                          <MiniStat label="Remaining" value={(jobStatus.total || 0) - (jobStatus.processed || 0)} />
+                          <MiniStat label="Remaining" value={(jobStatus.totalContacts || jobStatus.total || 0) - (jobStatus.processed || 0)} />
                        </div>
                        <div className="simple-card space-y-6">
                           <div className="flex items-center justify-between flex-wrap gap-3">
@@ -1091,7 +1091,7 @@ export default function App() {
                              </div>
                           </div>
                           <div className="h-2 rounded-full bg-white/5 overflow-hidden">
-                             <motion.div initial={{ width: 0 }} animate={{ width: `${(jobStatus.processed / jobStatus.total * 100) || 0}%` }} className="h-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
+                             <motion.div initial={{ width: 0 }} animate={{ width: `${(jobStatus.processed / (jobStatus.totalContacts || jobStatus.total || 1) * 100) || 0}%` }} className="h-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
                           </div>
                           {jobStatus.results?.length > 0 && (
                             <div className="relative">
