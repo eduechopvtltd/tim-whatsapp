@@ -1578,7 +1578,8 @@ async function updateHookdeckDestination(newUrl) {
         console.log(`[BRIDGE] Found destination "${destinationName}" with ID: ${resolvedId}. Updating URL...`);
 
         // Step 2: Update the resolved destination URL
-        await axios.patch(`https://api.hookdeck.com/2024-03-01/destinations/${resolvedId}`, {
+        await axios.put(`https://api.hookdeck.com/2024-03-01/destinations/${resolvedId}`, {
+            name: destinationName,
             config: { url: `${newUrl}/webhook` }
         }, {
             headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }
@@ -1586,10 +1587,11 @@ async function updateHookdeckDestination(newUrl) {
 
         console.log(`[BRIDGE] Success! Hookdeck destination ${resolvedId} updated to: ${newUrl}/webhook`);
     } catch (err) {
+        const errorData = err.response?.data ? JSON.stringify(err.response.data) : 'No extra data';
         const errorMsg = err.response?.data?.message || err.message;
-        console.error(`[BRIDGE ERROR] Failed to update Hookdeck destination: ${errorMsg}`);
+        console.error(`[BRIDGE ERROR] Failed to update Hookdeck destination: ${errorMsg} | Info: ${errorData}`);
         if (err.response?.status === 404) {
-            console.error('[BRIDGE] 404 suggests the v1 path is incorrect or the API key has restricted access.');
+            console.error('[BRIDGE] 404 suggests the endpoint structure or the ID is mismatched for this version.');
         }
     }
 }
