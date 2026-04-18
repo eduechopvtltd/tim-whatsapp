@@ -1278,7 +1278,7 @@ app.post('/webhook', async (req, res) => {
               
               // Also update the database if the campaign is already saved
               Campaign.findOneAndUpdate(
-                { userId: userId, id: parseInt(jobId.slice(-6)), "results.phone": phone },
+                { userId: userId, id: Number(jobId), "results.phone": phone },
                 { $set: { "results.$.status": result.status } }
               ).catch(err => console.error('[Webhook] DB Sync Error:', err.message));
 

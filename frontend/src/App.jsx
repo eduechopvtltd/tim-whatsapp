@@ -82,6 +82,7 @@ export default function App() {
   const [historyData, setHistoryData] = useState([]);
   const [config, setConfig] = useState({ PHONE_NUMBER_ID: '', WABA_ID: '', ACCESS_TOKEN: '' });
   const [isConnected, setIsConnected] = useState(false);
+  const [socketConnected, setSocketConnected] = useState(false);
   const [metaSynced, setMetaSynced] = useState(false);
   const [isLoading, setIsLoading] = useState({ templates: false, send: false, config: false });
   const [searchTerm, setSearchTerm] = useState('');
@@ -155,12 +156,24 @@ export default function App() {
 
     socket.on('connect', () => {
       console.log('[Socket] Connected to server');
-      socket.emit('join', user.id || user._id);
+      setSocketConnected(true);
     });
+
+    socket.on('disconnect', () => {
+      console.log('[Socket] Disconnected from server');
+      setSocketConnected(false);
+    });
+
+    // CRITICAL: Always join/re-join room when user state is confirmed
+    const uId = user.id || user._id;
+    if (uId) {
+      console.log(`[Socket] Joining room: ${uId}`);
+      socket.emit('join', uId);
+    }
 
     socket.on('status_update', ({ jobId: updatedJobId, phone: updatedPhone, status: newStatus }) => {
       // ONLY update the active campaign status (Status Tab)
-      if (jobId === updatedJobId) {
+      if (String(jobId) === String(updatedJobId)) {
         setJobStatus(prev => {
           if (!prev) return null;
           const updatedResults = prev.results.map(r => 
@@ -173,8 +186,8 @@ export default function App() {
       // Live update History tab ONLY if it is currently open (prevents sending-lag)
       if (activeTab === 'history') {
         setHistoryData(prev => prev.map(job => {
-          const jId = (job.id || job._id || '').toString();
-          if (jId === updatedJobId || jId.slice(-6) === updatedJobId.slice(-6)) {
+          const jId = String(job.id || job._id || '');
+          if (jId === String(updatedJobId) || jId.slice(-6) === String(updatedJobId).slice(-6)) {
             const updatedResults = job.results?.map(r => 
               r.phone === updatedPhone ? { ...r, status: newStatus } : r
             );
@@ -186,8 +199,8 @@ export default function App() {
         // ALSO update the expanded detail view if user is looking at this job
         setExpandedHistoryJob(prev => {
           if (!prev) return null;
-          const prevId = (prev.id || prev._id || '').toString();
-          if (prevId === updatedJobId || prevId.slice(-6) === updatedJobId.slice(-6)) {
+          const prevId = String(prev.id || prev._id || '');
+          if (prevId === String(updatedJobId) || prevId.slice(-6) === String(updatedJobId).slice(-6)) {
             const updatedResults = prev.results?.map(r => 
               r.phone === updatedPhone ? { ...r, status: newStatus } : r
             );
@@ -200,7 +213,7 @@ export default function App() {
 
     socket.on('campaign_progress', ({ jobId: progJobId, status: newProgress }) => {
       // ONLY update the active campaign progress
-      if (jobId === progJobId) {
+      if (String(jobId) === String(progJobId)) {
         setJobStatus(newProgress);
         
         // Refresh history list if it's currently being viewed
@@ -785,29 +798,25 @@ export default function App() {
         <div className="absolute top-0 right-0 w-[600px] h-[600px] emerald-radial pointer-events-none -z-10" />
 
         <header className="h-16 lg:h-20 flex items-center justify-between px-4 lg:px-10 border-b border-border-dim shrink-0 bg-bg-base/50 backdrop-blur-md sticky top-0 z-30">
-           <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4">
              <button className="lg:hidden p-2 -ml-2 text-slate-400 hover:text-white bg-white/5 rounded-lg border border-border-dim transition-all" onClick={() => setSidebarOpen(true)}><List size={20} weight="bold" /></button>
              <h2 className="text-lg lg:text-xl font-bold tracking-tight">{TAB_TITLES[activeTab]}</h2>
-           </div>
-           <div className="flex items-center gap-3 lg:gap-6">
-               <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.03] border border-white/[0.05]">
-                  <div className="w-5 h-5 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 font-black text-[9px] border border-emerald-500/20">
-                     {user?.username?.[0]?.toUpperCase() || 'U'}
-                  </div>
-                  <span className="text-[11px] font-bold text-slate-300 tracking-tight">{user?.username}</span>
-               </div>
-              <div className="flex flex-col items-end gap-1">
-                 <div className={cn("px-3 py-1 rounded-full text-[9px] lg:text-[10px] font-bold uppercase tracking-widest flex items-center gap-2", isConnected ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" : "bg-red-500/10 text-red-500 border border-red-500/20")}>
-                    <div className={cn("w-1.5 h-1.5 rounded-full", isConnected ? "bg-emerald-500 animate-pulse" : "bg-red-500")} />
-                    <span className="hidden xs:inline">{isConnected ? "Connected" : "Disconnected"}</span>
-                 </div>
-                 {isConnected && (
-                    <span className={cn("text-[7px] font-bold uppercase tracking-[0.2em] px-1", metaSynced ? "text-emerald-500/40" : "text-amber-500/40")}>
-                       {metaSynced ? "Meta API Synced" : "Meta Sync Failed"}
-                    </span>
-                 )}
-              </div>
-           </div>
+          </div>
+
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2">
+              <div className={`w-1.5 h-1.5 rounded-full ${socketConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]' : 'bg-red-500 anim-pulse'}`} />
+              <span className={`text-[10px] font-bold uppercase tracking-widest ${socketConnected ? 'text-emerald-500' : 'text-slate-500'}`}>
+                {socketConnected ? 'Live Connection Active' : 'Live Offline (Polling Mode)'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 py-1 px-3 rounded-lg bg-emerald-500/5 border border-border-dim">
+              <div className={`w-1.5 h-1.5 rounded-full ${metaSynced ? 'bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.5)]' : 'bg-slate-700'}`} />
+              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
+                {metaSynced ? 'Meta API Synced' : 'Meta API Offline'}
+              </span>
+            </div>
+          </div>
         </header>
 
         <div className="flex-1 overflow-y-auto p-4 lg:p-10">
@@ -912,12 +921,9 @@ export default function App() {
                                       <div className="flex-1 space-y-2">
                                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Template Name</label>
                                          <div className="relative">
-                                            <select value={selectedTemplate} onChange={e => setSelectedTemplate(e.target.value)} className="w-full bg-bg-surface border border-border-dim rounded-xl p-3.5 lg:p-4 text-xs lg:text-sm font-bold text-white outline-none appearance-none focus:border-emerald-500/30 transition-all">
-                                               <option value="">-- Choose Template --</option>
-                                               {templates.map(t => <option key={t.name} value={t.name}>{t.name} ({t.language})</option>)}
-                                            </select>
-                                            <CaretDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-600 pointer-events-none" size={14} />
-                                         </div>
+                                            {metaSynced ? 'Meta API Synced' : 'Meta API Offline'}
+                                          </span>
+                                        </div>
                                       </div>
                                       <button onClick={handleRefreshTemplates} disabled={refreshingTemplates} className={cn("simple-btn bg-white/5 border border-border-dim text-slate-400 hover:text-emerald-500 hover:border-emerald-500/20 h-[46px] lg:h-[52px] px-3.5 mb-[1px]", refreshingTemplates && "animate-pulse")} title="Refresh templates">
                                          <ArrowsClockwise size={20} className={refreshingTemplates ? "animate-spin" : ""} />
