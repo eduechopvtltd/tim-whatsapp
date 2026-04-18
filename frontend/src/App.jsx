@@ -126,9 +126,9 @@ export default function App() {
       if (!res.ok) throw new Error(data.error || 'Authentication failed');
       if (authView === 'login') {
         setToken(data.token);
-        setUser({ username: data.username });
+        setUser({ id: data.id, username: data.username });
         localStorage.setItem('tim_token', data.token);
-        localStorage.setItem('tim_user', JSON.stringify({ username: data.username }));
+        localStorage.setItem('tim_user', JSON.stringify({ id: data.id, username: data.username }));
       } else {
         setAuthView('login');
         setAuthError('Account created! Please login.');
@@ -182,6 +182,19 @@ export default function App() {
           }
           return job;
         }));
+
+        // ALSO update the expanded detail view if user is looking at this job
+        setExpandedHistoryJob(prev => {
+          if (!prev) return null;
+          const prevId = (prev.id || prev._id || '').toString();
+          if (prevId === updatedJobId || prevId.slice(-6) === updatedJobId.slice(-6)) {
+            const updatedResults = prev.results?.map(r => 
+              r.phone === updatedPhone ? { ...r, status: newStatus } : r
+            );
+            return { ...prev, results: updatedResults };
+          }
+          return prev;
+        });
       }
     });
 
@@ -236,6 +249,13 @@ export default function App() {
   useEffect(() => {
     if (!token) return;
     fetchWithAuth(`${API_BASE}/api/config`).then(r => { if (!r.ok) throw new Error('auth'); return r.json(); }).then(data => {
+      // Auto-repair user ID if missing (Critical for Socket.io)
+      if (data.ID && (!user?.id || user.id !== data.ID)) {
+        const updatedUser = { ...user, id: data.ID };
+        setUser(updatedUser);
+        localStorage.setItem('tim_user', JSON.stringify(updatedUser));
+      }
+
       setConfig(data);
       if (data.emailConfig) setEmailConfig(data.emailConfig);
       if (data.PHONE_NUMBER_ID && data.ACCESS_TOKEN) {

@@ -169,6 +169,7 @@ app.post('/auth/login', async (req, res) => {
 
     res.json({
       token,
+      id: user._id,
       username: user.username,
       configSet: !!(user.config.token && user.config.phoneId)
     });
@@ -1045,6 +1046,7 @@ app.get('/api/config', authenticateToken, async (req, res) => {
     if (!user) return res.status(404).json({ error: 'User not found' });
     
     res.json({
+      ID: user._id,
       PHONE_NUMBER_ID: user.config.phoneId,
       WABA_ID: user.config.wabaId,
       ACCESS_TOKEN: user.config.token,
