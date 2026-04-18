@@ -767,7 +767,7 @@ export default function App() {
            <button className="lg:hidden p-1 text-slate-500 hover:text-white" onClick={() => setSidebarOpen(false)}><X size={20} /></button>
         </div>
 
-        <nav className="flex-1 space-y-1">
+        <nav className="flex-1 space-y-1 overflow-y-auto pr-2 custom-scrollbar">
           <SidebarLink active={activeTab === 'home'} onClick={() => switchTab('home')} icon={House} label="Home" />
           <SidebarLink active={activeTab === 'send'} onClick={() => switchTab('send')} icon={PaperPlaneTilt} label="Send" />
           <SidebarLink active={activeTab === 'status'} onClick={() => switchTab('status')} icon={ChartLine} label="Status" badge={jobStatus?.status === 'Running' ? '●' : null} />
@@ -777,7 +777,7 @@ export default function App() {
           <SidebarLink active={activeTab === 'settings'} onClick={() => switchTab('settings')} icon={Gear} label="Settings" />
         </nav>
 
-        <div className="mt-auto px-2 space-y-3">
+        <div className="mt-auto pt-6 px-2 space-y-3 shrink-0 border-t border-border-dim/50">
            <div className="p-3 rounded-xl bg-bg-surface border border-border-dim flex items-center gap-3">
               <div className="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 font-bold border border-emerald-500/20 text-xs">
                 {user?.username?.[0]?.toUpperCase() || 'U'}
@@ -798,22 +798,22 @@ export default function App() {
         <div className="absolute top-0 right-0 w-[600px] h-[600px] emerald-radial pointer-events-none -z-10" />
 
         <header className="h-16 lg:h-20 flex items-center justify-between px-4 lg:px-10 border-b border-border-dim shrink-0 bg-bg-base/50 backdrop-blur-md sticky top-0 z-30">
-          <div className="flex items-center gap-4">
-             <button className="lg:hidden p-2 -ml-2 text-slate-400 hover:text-white bg-white/5 rounded-lg border border-border-dim transition-all" onClick={() => setSidebarOpen(true)}><List size={20} weight="bold" /></button>
-             <h2 className="text-lg lg:text-xl font-bold tracking-tight">{TAB_TITLES[activeTab]}</h2>
+          <div className="flex items-center gap-3 lg:gap-4 min-w-0">
+             <button className="lg:hidden p-2 -ml-2 text-slate-400 hover:text-white bg-white/5 rounded-lg border border-border-dim transition-all shrink-0" onClick={() => setSidebarOpen(true)}><List size={20} weight="bold" /></button>
+             <h2 className="text-base lg:text-xl font-bold tracking-tight truncate">{TAB_TITLES[activeTab]}</h2>
           </div>
 
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-3 lg:gap-6 shrink-0">
             <div className="flex items-center gap-2">
-              <div className={`w-1.5 h-1.5 rounded-full ${socketConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]' : 'bg-red-500 anim-pulse'}`} />
-              <span className={`text-[10px] font-bold uppercase tracking-widest ${socketConnected ? 'text-emerald-500' : 'text-slate-500'}`}>
-                {socketConnected ? 'Live Connection Active' : 'Live Offline (Polling Mode)'}
+              <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${socketConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]' : 'bg-red-500 anim-pulse'}`} />
+              <span className={`text-[10px] font-bold uppercase tracking-widest hidden sm:inline ${socketConnected ? 'text-emerald-500' : 'text-slate-500'}`}>
+                {socketConnected ? 'Live Connection Active' : 'Live Offline (Polling)'}
               </span>
             </div>
-            <div className="flex items-center gap-2 py-1 px-3 rounded-lg bg-emerald-500/5 border border-border-dim">
-              <div className={`w-1.5 h-1.5 rounded-full ${metaSynced ? 'bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.5)]' : 'bg-slate-700'}`} />
-              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
-                {metaSynced ? 'Meta API Synced' : 'Meta API Offline'}
+            <div className="flex items-center gap-2 py-1 px-2 lg:px-3 rounded-lg bg-emerald-500/5 border border-border-dim">
+              <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${metaSynced ? 'bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.5)]' : 'bg-slate-700'}`} />
+              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest hidden md:inline">
+                {metaSynced ? 'Meta API Synced' : 'Meta Offline'}
               </span>
             </div>
           </div>
@@ -824,16 +824,16 @@ export default function App() {
 
               {/* ═══ HOME TAB ═══ */}
               {activeTab === 'home' && (
-                <motion.div key="home" {...PAGE_TRANSITION} className="space-y-8 lg:space-y-10 max-w-6xl">
-                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-6">
+                <motion.div key="home" {...PAGE_TRANSITION} className="space-y-6 lg:space-y-10 max-w-6xl">
+                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-6">
                       <MetricCard label="Messages Sent" value={stats.totalSent} icon={PaperPlaneTilt} />
                       <MetricCard label="Success Rate" value={`${stats.totalSent > 0 ? (stats.totalSent / (stats.totalSent + stats.totalFailed) * 100).toFixed(1) : 0}%`} icon={CheckCircle} color="text-emerald-500" />
                       <MetricCard label="Campaigns" value={stats.totalCampaigns} icon={Database} />
                    </div>
-                   <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
+                   <div className="flex flex-col md:flex-row gap-6 lg:gap-8">
                       <div className="flex-1 space-y-4">
                          <h3 className="text-xs lg:text-sm font-bold text-slate-500 uppercase tracking-widest">Weekly Activity</h3>
-                         <div className="simple-card h-48 lg:h-64 flex items-end justify-between gap-1.5 lg:gap-3 px-4 lg:px-6 pt-10 pb-2">
+                         <div className="simple-card h-48 lg:h-64 flex items-end justify-between gap-1 lg:gap-3 px-2 lg:px-6 pt-10 pb-2">
                              {stats.weeklyActivity.map((dayData, i) => (
                                 <div key={i} className="flex-1 flex flex-col items-center gap-2 h-full justify-end">
                                    <motion.div initial={{ height: 0 }} animate={{ height: `${Math.max(dayData.height, 5)}%` }} className="w-full bg-emerald-500/20 rounded-t-sm lg:rounded-t-md relative group min-h-[4px]">
@@ -871,7 +871,7 @@ export default function App() {
 
               {/* ═══ SEND TAB ═══ */}
               {activeTab === 'send' && (
-                <motion.div key="send" {...PAGE_TRANSITION} className="max-w-6xl mx-auto flex flex-col lg:flex-row gap-8 pb-20">
+                <motion.div key="send" {...PAGE_TRANSITION} className="max-w-6xl mx-auto flex flex-col md:flex-row gap-8 pb-20">
                    {/* LEFT COLUMN: CONFIGURATION */}
                    <div className="flex-1 space-y-6 lg:space-y-8 min-w-0">
                       
@@ -1086,7 +1086,7 @@ export default function App() {
                 <motion.div key="status" {...PAGE_TRANSITION} className="max-w-4xl mx-auto space-y-6 lg:space-y-8">
                    {jobStatus ? (
                      <>
-                       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
+                       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 lg:gap-4">
                           <MiniStat label="Processed" value={`${jobStatus.processed || 0}/${jobStatus.totalContacts || jobStatus.total || 0}`} />
                           <MiniStat label="Sent" value={jobStatus.results?.filter(r => r.status?.includes('Sent') || r.status?.includes('Delivered') || r.status?.includes('Read')).length || 0} color="text-emerald-500" />
                           <MiniStat label="Failed" value={jobStatus.results?.filter(r => r.status?.includes('Failed')).length || 0} color="text-red-500" />
@@ -1306,7 +1306,7 @@ export default function App() {
                          <>
                             <div className="p-4 lg:p-6 border-b border-border-dim flex items-center justify-between bg-white/[0.01]">
                                <div className="flex items-center gap-3">
-                                  <button onClick={() => setActiveChatPhone(null)} className="lg:hidden p-2 -ml-2 text-slate-400 hover:text-white"><ArrowLeft size={20} weight="bold" /></button>
+                                  <button onClick={() => setActiveChatPhone(null)} className="lg:hidden p-2 -ml-2 text-slate-400 hover:text-white bg-white/5 rounded-lg border border-border-dim transition-all shrink-0"><ArrowLeft size={18} weight="bold" /></button>
                                   <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 border border-emerald-500/20 font-bold text-sm">
                                      {(chats.find(c => c.phone === activeChatPhone)?.name || 'C').charAt(0).toUpperCase()}
                                   </div>
