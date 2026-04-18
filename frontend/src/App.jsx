@@ -317,16 +317,15 @@ export default function App() {
 
   const sortedChats = useMemo(() => {
     return [...chats].sort((a, b) => {
+      // Strictly use lastMessageAt for static behavior. Fallback to 0 if missing.
       const dateA = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
       const dateB = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
       
       // 1. Primary sort: last message timestamp (newest first)
       if (dateB !== dateA) return dateB - dateA;
       
-      // 2. Secondary sort: unread count (unreads first)
-      if ((b.unreadCount || 0) !== (a.unreadCount || 0)) return (b.unreadCount || 0) - (a.unreadCount || 0);
-      
-      // 3. Stable tertiary sort: phone number (alphabetical)
+      // 2. Stable secondary sort: phone number (alphabetical)
+      // This ensures ties remain static and don't jump when unread status changes
       return (a.phone || '').localeCompare(b.phone || '');
     });
   }, [chats]);
@@ -1169,7 +1168,7 @@ export default function App() {
                                         <span className="bg-emerald-500 text-black text-[9px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center shadow-lg shadow-emerald-500/20">{chat.unreadCount}</span>
                                      )}
                                   </div>
-                                  {chat.updatedAt && <span className="text-[9px] font-bold text-slate-600 shrink-0">{new Date(chat.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
+                                  {(chat.lastMessageAt || chat.updatedAt) && <span className="text-[9px] font-bold text-slate-600 shrink-0">{new Date(chat.lastMessageAt || chat.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
                                </div>
                                <p className="text-[10px] text-slate-500 truncate pr-4">
                                  {chat.messages?.[chat.messages.length - 1]?.from === 'me' ? '✓ ' : ''}
