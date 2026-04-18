@@ -1547,21 +1547,46 @@ let webhookProcess = null;
 
 async function updateHookdeckDestination(newUrl) {
     const apiKey = (process.env.HOOKDECK_API_KEY || '').trim();
-    if (!apiKey || !hookdeckDestinationId) {
-        console.log('[BRIDGE] Skipping Hookdeck update: Missing API Key or Destination ID.');
+    const destinationName = process.env.HOOKDECK_DESTINATION_NAME || 'WhatsApp_Local_Server_Bridge';
+    
+    if (!apiKey) {
+        console.log('[BRIDGE] Skipping Hookdeck update: Missing API Key.');
         return;
     }
 
     try {
-        console.log(`[BRIDGE] Updating Hookdeck destination ${hookdeckDestinationId} to: ${newUrl}`);
-        await axios.patch(`https://api.hookdeck.com/v1/destinations/${hookdeckDestinationId}`, {
+        console.log(`[BRIDGE] Searching for Hookdeck destination named: "${destinationName}"...`);
+        
+        // Step 1: List destinations to find the ID by name
+        const listRes = await axios.get('https://api.hookdeck.com/v1/destinations', {
+            headers: { 'Authorization': `Bearer ${apiKey}` }
+        });
+        
+        const destinations = listRes.data.models || [];
+        const target = destinations.find(d => d.name === destinationName);
+
+        if (!target) {
+            console.warn(`[BRIDGE ERROR] Could not find any Hookdeck destination named "${destinationName}". Found: ${destinations.map(d=>d.name).join(', ') || 'none'}`);
+            return;
+        }
+
+        const resolvedId = target.id;
+        console.log(`[BRIDGE] Found destination "${destinationName}" with ID: ${resolvedId}. Updating URL...`);
+
+        // Step 2: Update the resolved destination URL
+        await axios.patch(`https://api.hookdeck.com/v1/destinations/${resolvedId}`, {
             config: { url: `${newUrl}/webhook` }
         }, {
             headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }
         });
-        console.log('[BRIDGE] Successfully updated Hookdeck static bridge! ✅');
+
+        console.log(`[BRIDGE] Success! Hookdeck destination ${resolvedId} updated to: ${newUrl}/webhook`);
     } catch (err) {
-        console.error('[BRIDGE ERROR] Failed to update Hookdeck destination:', err.response?.data?.message || err.message);
+        const errorMsg = err.response?.data?.message || err.message;
+        console.error(`[BRIDGE ERROR] Failed to update Hookdeck destination: ${errorMsg}`);
+        if (err.response?.status === 404) {
+            console.error('[BRIDGE] 404 suggests the v1 path is incorrect or the API key has restricted access.');
+        }
     }
 }
 
