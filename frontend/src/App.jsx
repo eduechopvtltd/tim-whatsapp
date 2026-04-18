@@ -32,7 +32,8 @@ import {
   VideoCamera,
   FileText,
   Phone,
-  ArrowSquareOut
+  ArrowSquareOut,
+  Envelope
 } from "@phosphor-icons/react";
 import { motion, AnimatePresence } from 'framer-motion';
 import { clsx } from 'clsx';
@@ -104,6 +105,9 @@ export default function App() {
   const [isSendingReply, setIsSendingReply] = useState(false);
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
   const [pendingAttachment, setPendingAttachment] = useState(null);
+  const [emailConfig, setEmailConfig] = useState({ enabled: false, smtpHost: '', smtpPort: 587, smtpUser: '', smtpPass: '', notifyEmail: '' });
+  const [isSavingEmail, setIsSavingEmail] = useState(false);
+  const [isTestingEmail, setIsTestingEmail] = useState(false);
 
   // ═══════════ AUTH FUNCTIONS ═══════════
   const handleAuth = async (e) => {
@@ -151,6 +155,7 @@ export default function App() {
     if (!token) return;
     fetchWithAuth(`${API_BASE}/api/config`).then(r => { if (!r.ok) throw new Error('auth'); return r.json(); }).then(data => {
       setConfig(data);
+      if (data.emailConfig) setEmailConfig(data.emailConfig);
       if (data.PHONE_NUMBER_ID && data.ACCESS_TOKEN) {
         setIsConnected(true);
         fetchWithAuth(`${API_BASE}/api/templates`).then(r => r.json()).then(tpls => {
@@ -396,6 +401,36 @@ export default function App() {
       else { setStatus(`Registration Error: ${data.error || 'Failed'}`); }
     } catch (e) { setStatus('Register failed — check server logs.'); }
     finally { setIsRegistering(false); }
+  };
+  
+  const handleSaveEmailSettings = async (e) => {
+    e.preventDefault();
+    setIsSavingEmail(true); setStatus('Updating email alerts...');
+    try {
+      const res = await fetchWithAuth(`${API_BASE}/api/settings/email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(emailConfig)
+      });
+      if (res.ok) { setStatus('Email settings updated!'); }
+      else { const d = await res.json(); setStatus(`Error: ${d.error}`); }
+    } catch (e) { setStatus('Failed to save email settings.'); }
+    finally { setIsSavingEmail(false); }
+  };
+
+  const handleTestEmail = async () => {
+    setIsTestingEmail(true); setStatus('Sending test email...');
+    try {
+      const res = await fetchWithAuth(`${API_BASE}/api/settings/email/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(emailConfig)
+      });
+      const d = await res.json();
+      if (res.ok) { setStatus('Test email sent! Check your inbox.'); }
+      else { setStatus(`Test failed: ${d.error}`); }
+    } catch (e) { setStatus('Failed to send test email.'); }
+    finally { setIsTestingEmail(false); }
   };
 
   const handleFileUpload = async (e) => {
@@ -1331,6 +1366,48 @@ export default function App() {
                             {isLoading.config ? 'Saving...' : <><CheckCircle weight="bold" size={18} /> Save Settings</>}
                          </button>
                       </form>
+
+                      {/* --- EMAIL ALERTS SECTION --- */}
+                      <div className="pt-8 border-t border-border-dim space-y-8">
+                         <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3 lg:gap-4">
+                               <div className="w-9 h-9 lg:w-10 lg:h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500"><Envelope size={18} weight="bold" /></div>
+                               <div><h3 className="text-sm lg:text-base font-bold">Email Alerts</h3><p className="text-[10px] lg:text-xs text-slate-500">Get notified when customers reply.</p></div>
+                            </div>
+                            <button 
+                              onClick={() => setEmailConfig({...emailConfig, enabled: !emailConfig.enabled})}
+                              className={cn(
+                                "flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all text-[10px] lg:text-[11px] font-bold uppercase tracking-widest",
+                                emailConfig.enabled ? "bg-emerald-500 text-black border-emerald-500 shadow-lg shadow-emerald-500/20" : "bg-white/5 text-slate-500 border-border-dim hover:text-white"
+                              )}
+                            >
+                               {emailConfig.enabled ? 'Enabled' : 'Disabled'}
+                            </button>
+                         </div>
+
+                         {emailConfig.enabled && (
+                            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="space-y-6 lg:space-y-8 pt-2">
+                               <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-6">
+                                  <SimpleInput label="SMTP Host" value={emailConfig.smtpHost} onChange={v => setEmailConfig({...emailConfig, smtpHost: v})} placeholder="smtp.gmail.com" />
+                                  <SimpleInput label="SMTP Port" value={String(emailConfig.smtpPort)} onChange={v => setEmailConfig({...emailConfig, smtpPort: parseInt(v) || 0})} placeholder="587" />
+                               </div>
+                               <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-6">
+                                  <SimpleInput label="SMTP Username" value={emailConfig.smtpUser} onChange={v => setEmailConfig({...emailConfig, smtpUser: v})} placeholder="your-email@gmail.com" />
+                                  <SimpleInput isSensitive label="SMTP Password" value={emailConfig.smtpPass} onChange={v => setEmailConfig({...emailConfig, smtpPass: v})} placeholder="App Password" />
+                               </div>
+                               <SimpleInput label="Notify Recipient Email" value={emailConfig.notifyEmail} onChange={v => setEmailConfig({...emailConfig, notifyEmail: v})} placeholder="alerts@yourcompany.com" />
+                               
+                               <div className="flex flex-col lg:flex-row gap-4 pt-2">
+                                  <button onClick={handleSaveEmailSettings} disabled={isSavingEmail} className="flex-1 simple-btn btn-primary h-12 flex items-center justify-center gap-2">
+                                     {isSavingEmail ? 'Saving...' : <><CheckCircle weight="bold" size={16} /> Save Alerts</>}
+                                  </button>
+                                  <button onClick={handleTestEmail} disabled={isTestingEmail || !emailConfig.smtpHost} className="flex-1 simple-btn bg-white/5 border border-border-dim text-white hover:bg-white/10 h-12 flex items-center justify-center gap-2 transition-all">
+                                     {isTestingEmail ? 'Testing...' : <><PaperPlaneTilt size={16} weight="bold" /> Send Test Email</>}
+                                  </button>
+                               </div>
+                            </motion.div>
+                         )}
+                      </div>
 
                        <div className="pt-8 border-t border-border-dim space-y-6">
                           <div className="flex items-center gap-3">

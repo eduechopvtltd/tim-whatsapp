@@ -14,6 +14,14 @@ const UserSchema = new mongoose.Schema({
     hookdeck: {
         destinationId: { type: String, default: '' },
         sourceUrl: { type: String, default: '' }
+    },
+    emailConfig: {
+        enabled: { type: Boolean, default: false },
+        smtpHost: { type: String, default: '' },
+        smtpPort: { type: Number, default: 587 },
+        smtpUser: { type: String, default: '' },
+        smtpPass: { type: String, default: '' },
+        notifyEmail: { type: String, default: '' }
     }
 }, { timestamps: true });
 

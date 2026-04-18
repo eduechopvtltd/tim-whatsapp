@@ -12,6 +12,7 @@ require('dotenv').config();
 const { spawn } = require('child_process');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const nodemailer = require('nodemailer');
 const jwt = require('jsonwebtoken');
 const { User, Chat, Campaign, GlobalState, WamidMapping } = require('./db/models');
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_for_dev_only';
@@ -145,6 +146,52 @@ app.post('/auth/login', async (req, res) => {
 });
 
 // ═══════════════════ MODULAR ENGINE HELPERS ═══════════════════
+
+// --- EMAIL NOTIFICATION SYSTEM ---
+async function sendEmailNotification(userId, msgDetails) {
+  try {
+    const user = await User.findById(userId);
+    if (!user || !user.emailConfig || !user.emailConfig.enabled) return;
+
+    const { smtpHost, smtpPort, smtpUser, smtpPass, notifyEmail } = user.emailConfig;
+    if (!smtpHost || !smtpUser || !smtpPass || !notifyEmail) {
+        console.warn(`[EMAIL] Missing configuration for user ${userId}. Skipping alert.`);
+        return;
+    }
+
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpPort === 465, // true for 465, false for other ports
+      auth: {
+        user: smtpUser,
+        pass: smtpPass,
+      },
+    });
+
+    const mailOptions = {
+      from: `"TIM Cloud Alerts" <${smtpUser}>`,
+      to: notifyEmail,
+      subject: `New Message from ${msgDetails.name || msgDetails.from}`,
+      text: `You have received a new WhatsApp message.\n\nFrom: ${msgDetails.name} (${msgDetails.from})\nMessage: ${msgDetails.text}\n\nCheck your dashboard for more details.`,
+      html: `
+        <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+          <h2 style="color: #10b981;">New WhatsApp Message</h2>
+          <p><strong>From:</strong> ${msgDetails.name} (${msgDetails.from})</p>
+          <div style="background: #f9f9f9; padding: 15px; border-radius: 5px; margin: 15px 0;">
+            ${msgDetails.text}
+          </div>
+          <p style="font-size: 12px; color: #666;">This is an automated notification from your TIM Cloud CRM.</p>
+        </div>
+      `,
+    };
+
+    await transporter.sendMail(mailOptions);
+    console.log(`[EMAIL] Notification sent to ${notifyEmail} for user ${userId}`);
+  } catch (err) {
+    console.error(`[EMAIL ERROR] Failed to send notification:`, err.message);
+  }
+}
 
 /**
  * Build a simple text message payload
@@ -998,6 +1045,60 @@ app.post('/api/config', authenticateToken, async (req, res) => {
   }
 });
 
+// --- EMAIL SETTINGS API ---
+
+// Update Email Configuration
+app.post('/api/settings/email', authenticateToken, async (req, res) => {
+  try {
+    const { enabled, smtpHost, smtpPort, smtpUser, smtpPass, notifyEmail } = req.body;
+    
+    await User.findByIdAndUpdate(req.user.id, {
+      $set: {
+        'emailConfig.enabled': enabled,
+        'emailConfig.smtpHost': smtpHost,
+        'emailConfig.smtpPort': smtpPort,
+        'emailConfig.smtpUser': smtpUser,
+        'emailConfig.smtpPass': smtpPass,
+        'emailConfig.notifyEmail': notifyEmail
+      }
+    });
+
+    res.json({ success: true, message: 'Email configuration updated successfully' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update email settings' });
+  }
+});
+
+// Test Email Configuration
+app.post('/api/settings/email/test', authenticateToken, async (req, res) => {
+  try {
+    const { smtpHost, smtpPort, smtpUser, smtpPass, notifyEmail } = req.body;
+    
+    if (!smtpHost || !smtpUser || !smtpPass || !notifyEmail) {
+      return res.status(400).json({ error: 'Incomplete configuration for testing' });
+    }
+
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpPort === 465,
+      auth: { user: smtpUser, pass: smtpPass },
+    });
+
+    await transporter.sendMail({
+      from: `"TIM Cloud Test" <${smtpUser}>`,
+      to: notifyEmail,
+      subject: 'TIM Cloud SMTP Test Connection',
+      text: 'Congratulations! Your SMTP connection is configured correctly and working.',
+    });
+
+    res.json({ success: true, message: 'Test email sent successfully! Check your inbox.' });
+  } catch (err) {
+    console.error('[EMAIL TEST ERROR]', err.message);
+    res.status(500).json({ error: `Connection failed: ${err.message}` });
+  }
+});
+
 // Manual Phone Registration with Meta (User Scoped)
 app.post('/api/register', authenticateToken, async (req, res) => {
   const { pin } = req.body;
@@ -1234,6 +1335,13 @@ app.post('/webhook', async (req, res) => {
                 },
                 { upsert: true }
             );
+            
+            // TRIGGER EMAIL NOTIFICATION
+            sendEmailNotification(userId, {
+                from: from,
+                name: profileName,
+                text: text
+            });
             
         } catch (dbErr) {
             console.error('[DB ERROR] Failed to save incoming message:', dbErr.message);
