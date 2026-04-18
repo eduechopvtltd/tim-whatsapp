@@ -1507,10 +1507,7 @@ setInterval(async () => {
 async function triggerHookdeckSync() {
     const apiKey = (process.env.HOOKDECK_API_KEY || '').trim();
     const sourceName = process.env.HOOKDECK_SOURCE_NAME;
-    
-    if (apiKey && !apiKey.startsWith('hk_')) {
-        console.warn('⚠️ [HOOKDECK WARNING] Your HOOKDECK_API_KEY does not start with "hk_". You may have accidentally used your Project ID instead of an API Key. Please check your Hookdeck Settings.');
-    }
+
 
     if (!apiKey || !sourceName) {
         console.log('[HOOKDECK SYNC] Missing API key or Source Name in .env. Skipping sync.');
