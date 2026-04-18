@@ -204,9 +204,37 @@ async function sendEmailNotification(userId, msgDetails) {
   }
 }
 
+// --- RENDER KEEP-ALIVE (No-Doze) ---
+let keepAliveInterval = null;
+
+function maintainActiveState(shouldStayAwake) {
+    if (shouldStayAwake && !keepAliveInterval && process.env.RENDER_EXTERNAL_URL) {
+        console.log('[KEEP-ALIVE] Starting heartbeat to prevent Render from sleeping during campaign.');
+        keepAliveInterval = setInterval(async () => {
+            try {
+                const url = `${process.env.RENDER_EXTERNAL_URL}/health`;
+                await axios.get(url);
+                console.log('[KEEP-ALIVE] Heartbeat sent.');
+            } catch (err) {
+                // Ignore errors
+            }
+        }, 10 * 60 * 1000); // 10 minutes
+    } else if (!shouldStayAwake && keepAliveInterval) {
+        console.log('[KEEP-ALIVE] Stopping heartbeat. Safe to sleep.');
+        clearInterval(keepAliveInterval);
+        keepAliveInterval = null;
+    }
+}
+
+// Add a simple health endpoint for the keep-alive
+app.get('/health', (req, res) => res.sendStatus(200));
+
 // ═══════════════════ RESILIENT CAMPAIGN ENGINE ═══════════════════
 
 async function runCampaignWorker(campaignId) {
+  // Activate Keep-Alive
+  maintainActiveState(true);
+  
   try {
     const campaign = await Campaign.findById(campaignId);
     if (!campaign || ['Completed', 'Stopped'].includes(campaign.status)) return;
@@ -352,6 +380,15 @@ async function runCampaignWorker(campaignId) {
         const finishedCampaign = await Campaign.findByIdAndUpdate(campaignId, { status: 'Completed' }, { new: true });
         jobs[userId][jobId] = finishedCampaign.toObject();
         console.log(`[WORKER] Campaign ${jobId} Completed!`);
+    }
+    
+    // Check if any other campaigns are still running before stopping Keep-Alive
+    const otherRunning = await Campaign.countDocuments({ 
+        _id: { $ne: campaignId }, 
+        status: 'Running' 
+    });
+    if (otherRunning === 0) {
+        maintainActiveState(false);
     }
 
   } catch (workerErr) {
@@ -1578,9 +1615,10 @@ async function updateHookdeckDestination(newUrl) {
         console.log(`[BRIDGE] Found destination "${destinationName}" with ID: ${resolvedId}. Updating URL...`);
 
         // Step 2: Update the resolved destination URL
+        // We use newUrl without /webhook because Hookdeck propagates the path automatically
         await axios.put(`https://api.hookdeck.com/2024-03-01/destinations/${resolvedId}`, {
             name: destinationName,
-            config: { url: `${newUrl}/webhook` }
+            config: { url: newUrl }
         }, {
             headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }
         });
