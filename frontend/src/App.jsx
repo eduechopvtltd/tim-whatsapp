@@ -317,10 +317,10 @@ export default function App() {
 
   const sortedChats = useMemo(() => {
     return [...chats].sort((a, b) => {
-      const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-      const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+      const dateA = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+      const dateB = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
       
-      // 1. Primary sort: timestamp (newest first)
+      // 1. Primary sort: last message timestamp (newest first)
       if (dateB !== dateA) return dateB - dateA;
       
       // 2. Secondary sort: unread count (unreads first)

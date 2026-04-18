@@ -253,65 +253,55 @@ async function runCampaignWorker(campaignId) {
       let cleanPhone = phone.replace(/\D/g, '');
       if (cleanPhone.length === 10) cleanPhone = '91' + cleanPhone;
 
-      if (alreadySentSet.has(cleanPhone)) {
-        continue; 
-      }
-
-      await sleep(250);
-
       let wamid = null, msgStatus = 'Pending', payload = null, error = null;
 
-      try {
-        if (messageType === 'text') {
-          let text = customMessage || '';
-          Object.keys(contact).forEach(k => {
-            text = text.replace(new RegExp(`{{\\s*${escapeRegExp(k)}\\s*}}`, 'gi'), contact[k] || '');
+      // --- DEDUPLICATION CHECK ---
+      if (alreadySentSet.has(cleanPhone)) {
+        msgStatus = 'Skipped ✅ (Duplicate)';
+        console.log(`[WORKER] Skipping duplicate: ${cleanPhone}`);
+      } else {
+        await sleep(250);
+        try {
+          if (messageType === 'text') {
+            let text = customMessage || '';
+            Object.keys(contact).forEach(k => {
+              text = text.replace(new RegExp(`{{\\s*${escapeRegExp(k)}\\s*}}`, 'gi'), contact[k] || '');
+            });
+            payload = buildTextPayload(cleanPhone, text);
+          } else {
+            payload = buildTemplatePayload(cleanPhone, template, mapping, contact, cachedHeaderMediaId);
+          }
+
+          const response = await axios.post(`https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`, payload, {
+            headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}`, 'Content-Type': 'application/json' }
           });
-          payload = buildTextPayload(cleanPhone, text);
-        } else {
-          payload = buildTemplatePayload(cleanPhone, template, mapping, contact, cachedHeaderMediaId);
-        }
-
-        const response = await axios.post(`https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`, payload, {
-          headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}`, 'Content-Type': 'application/json' }
-        });
-        
-        msgStatus = 'Sent ✅';
-        wamid = response.data.messages?.[0]?.id;
-
-        if (wamid) {
-          // Populating memory map for fast webhook lookups
-          wamidToJob[wamid] = { jobId, phone: cleanPhone, userId };
           
-          // Persisting mapping for status survival after restart
-          new WamidMapping({
-            wamid,
-            userId,
-            jobId,
-            phone: cleanPhone
-          }).save().catch(err => console.error('[DB] WamidMapping Save Error:', err.message));
+          msgStatus = 'Sent ✅';
+          wamid = response.data.messages?.[0]?.id;
 
-          // Sync to individual Chat history
-          const outboundMsg = {
-              id: wamid,
-              from: 'me',
-              name: cleanPhone,
-              text: messageType === 'template' ? `[Sent Template: ${templateName}]` : (customMessage || ''),
-              timestamp: Date.now(),
-              type: messageType
-          };
-          Chat.findOneAndUpdate(
-              { userId: userId, phone: cleanPhone },
-              { 
-                  $push: { messages: outboundMsg },
-                  $set: { updatedAt: Date.now() }
-              },
-              { upsert: true }
-          ).catch(e => console.warn('[DB] Outbound sync skip:', e.message));
+          if (wamid) {
+            wamidToJob[wamid] = { jobId, phone: cleanPhone, userId };
+            new WamidMapping({ wamid, userId, jobId, phone: cleanPhone }).save().catch(() => {});
+            
+            // Sync to individual Chat history
+            const outboundMsg = {
+                id: wamid,
+                from: 'me',
+                name: cleanPhone,
+                text: messageType === 'template' ? `[Sent Template: ${templateName}]` : (customMessage || ''),
+                timestamp: Date.now(),
+                type: messageType
+            };
+            Chat.findOneAndUpdate(
+                { userId: userId, phone: cleanPhone },
+                { $push: { messages: outboundMsg }, $set: { updatedAt: Date.now(), lastMessageAt: Date.now() } },
+                { upsert: true }
+            ).catch(() => {});
+          }
+        } catch (err) {
+          error = err.response?.data?.error ? mapMetaError(err.response.data.error) : err.message;
+          msgStatus = `Failed ❌ (${error})`;
         }
-      } catch (err) {
-        error = err.response?.data?.error ? mapMetaError(err.response.data.error) : err.message;
-        msgStatus = `Failed ❌ (${error})`;
       }
 
       // PERSIST PROGRESS
@@ -974,7 +964,8 @@ app.get('/api/config', authenticateToken, async (req, res) => {
       WABA_ID: user.config.wabaId,
       ACCESS_TOKEN: user.config.token,
       APP_ID: user.config.appId,
-      WEBHOOK_VERIFY_TOKEN: user.config.verifyToken
+      WEBHOOK_VERIFY_TOKEN: user.config.verifyToken,
+      emailConfig: user.emailConfig
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch configuration' });
@@ -1293,7 +1284,7 @@ app.post('/webhook', async (req, res) => {
                     $setOnInsert: { name: profileName },
                     $push: { messages: newMsg },
                     $inc: { unreadCount: 1 },
-                    $set: { updatedAt: Date.now() }
+                    $set: { updatedAt: Date.now(), lastMessageAt: Date.now() }
                 },
                 { upsert: true }
             );
@@ -1327,7 +1318,7 @@ app.get('/api/chats', authenticateToken, async (req, res) => {
     const dbChats = await Chat.find({ 
       userId: req.user.id,
       "messages.from": "customer" 
-    }).sort({ updatedAt: -1 });
+    }).sort({ lastMessageAt: -1 });
     res.json(dbChats);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch chats' });
@@ -1423,7 +1414,7 @@ app.post('/api/reply', authenticateToken, async (req, res) => {
         { userId: userId, phone: phone },
         { 
             $push: { messages: newMsg },
-            $set: { updatedAt: Date.now() }
+            $set: { updatedAt: Date.now(), lastMessageAt: Date.now() }
         },
         { upsert: true }
     );
