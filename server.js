@@ -43,7 +43,8 @@ const connectDB = async () => {
         // Migration: Ensure all legacy chats have a lastMessageAt field for stable sorting
         await Chat.updateMany(
             { lastMessageAt: { $exists: false } },
-            [{ $set: { lastMessageAt: "$updatedAt" } }]
+            [{ $set: { lastMessageAt: "$updatedAt" } }],
+            { updatePipeline: true }
         );
         
         return true;
