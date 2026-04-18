@@ -159,7 +159,7 @@ export default function App() {
     });
 
     socket.on('status_update', ({ jobId: updatedJobId, phone: updatedPhone, status: newStatus }) => {
-      // Update global job status if active
+      // ONLY update the active campaign status (Status Tab)
       if (jobId === updatedJobId) {
         setJobStatus(prev => {
           if (!prev) return null;
@@ -170,30 +170,31 @@ export default function App() {
         });
       }
 
-      // Update history list in-place
-      setHistoryData(prev => prev.map(job => {
-        const jId = (job.id || job._id || '').toString();
-        if (jId === updatedJobId || jId.slice(-6) === updatedJobId.slice(-6)) {
-          const updatedResults = job.results?.map(r => 
-            r.phone === updatedPhone ? { ...r, status: newStatus } : r
-          );
-          return { ...job, results: updatedResults };
-        }
-        return job;
-      }));
+      // Live update History tab ONLY if it is currently open (prevents sending-lag)
+      if (activeTab === 'history') {
+        setHistoryData(prev => prev.map(job => {
+          const jId = (job.id || job._id || '').toString();
+          if (jId === updatedJobId || jId.slice(-6) === updatedJobId.slice(-6)) {
+            const updatedResults = job.results?.map(r => 
+              r.phone === updatedPhone ? { ...r, status: newStatus } : r
+            );
+            return { ...job, results: updatedResults };
+          }
+          return job;
+        }));
+      }
     });
 
     socket.on('campaign_progress', ({ jobId: progJobId, status: newProgress }) => {
+      // ONLY update the active campaign progress
       if (jobId === progJobId) {
         setJobStatus(newProgress);
-      }
-      setHistoryData(prev => prev.map(job => {
-        const jId = (job.id || job._id || '').toString();
-        if (jId === progJobId || jId.slice(-6) === progJobId.slice(-6)) {
-          return { ...job, ...newProgress };
+        
+        // Refresh history list if it's currently being viewed
+        if (activeTab === 'history' || newProgress.status === 'Completed' || newProgress.status === 'Stopped') {
+           fetchWithAuth(`${API_BASE}/api/history`).then(r => r.json()).then(d => { if (Array.isArray(d)) setHistoryData(d); });
         }
-        return job;
-      }));
+      }
     });
 
     socket.on('new_message', ({ phone, name, text, type }) => {
@@ -248,7 +249,7 @@ export default function App() {
       if (data.jobId) { setJobId(data.jobId); setJobStatus(data.status || data); setActiveTab('status'); }
     }).catch(() => {});
     fetchWithAuth(`${API_BASE}/api/history`).then(r => r.json()).then(d => { if (Array.isArray(d)) setHistoryData(d); }).catch(() => {});
-  }, [token]);
+  }, [token, activeTab]);
 
   // REAL-TIME CONNECTION CHECK
   useEffect(() => {
@@ -270,18 +271,18 @@ export default function App() {
       }).catch(() => {});
     };
     fetchStatus();
-    const interval = setInterval(fetchStatus, 5000); // 5s safety poll
+    const interval = setInterval(fetchStatus, 15000); // reduced frequency to 15s
     return () => clearInterval(interval);
   }, [jobId, token]);
 
-  // INBOX (Initial load + 10s safety poll)
+  // INBOX (Initial load + 30s safety poll)
   useEffect(() => {
     if (!token) return;
     const fetchChats = () => {
       fetchWithAuth(`${API_BASE}/api/chats`).then(r => r.json()).then(d => { if (Array.isArray(d)) setChats(d); }).catch(() => {});
     };
     fetchChats();
-    const interval = setInterval(fetchChats, 10000); 
+    const interval = setInterval(fetchChats, 30000); // reduced to 30s
     return () => clearInterval(interval);
   }, [token, activeTab]);
 
@@ -291,7 +292,7 @@ export default function App() {
       fetchWithAuth(`${API_BASE}/api/chats/${activeChatPhone}`).then(r => r.json()).then(d => { if (Array.isArray(d)) setActiveChatHistory(d); }).catch(() => {});
     };
     fetchHistory();
-    const interval = setInterval(fetchHistory, 5000);
+    const interval = setInterval(fetchHistory, 20000); // reduced to 20s
     return () => clearInterval(interval);
   }, [token, activeTab, activeChatPhone]);
 
