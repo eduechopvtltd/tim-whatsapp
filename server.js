@@ -35,12 +35,14 @@ const connectDB = async () => {
         const uri = process.env.MONGODB_URI;
         if (!uri || uri.includes('<username>')) {
             console.warn('[DB] ❌ No valid MONGODB_URI found in .env. Persistence will be disabled.');
-            return;
+            return false;
         }
         await mongoose.connect(uri);
         console.log('[DB] ✅ Connected to MongoDB Atlas');
+        return true;
     } catch (err) {
         console.error('[DB] ❌ Connection error:', err.message);
+        return false;
     }
 };
 
@@ -72,7 +74,8 @@ app.use((req, res, next) => {
   next();
 });
 
-// Global In-memory stores (Scoped to userId)
+// --- PERSISTENT JOB CACHE ---
+// Used for real-time monitoring of actively running workers.
 let jobs = {};            // { userId: { jobId: { status, results, ... } } }
 let wamidToJob = {};      // { wamid: { jobId, phone, userId } }
 let sentHistory = {};     // { phone: { sentAt, jobId } } (Shared cache)
@@ -191,6 +194,170 @@ async function sendEmailNotification(userId, msgDetails) {
   } catch (err) {
     console.error(`[EMAIL ERROR] Failed to send notification:`, err.message);
   }
+}
+
+// ═══════════════════ RESILIENT CAMPAIGN ENGINE ═══════════════════
+
+async function runCampaignWorker(campaignId) {
+  try {
+    const campaign = await Campaign.findById(campaignId);
+    if (!campaign || ['Completed', 'Stopped'].includes(campaign.status)) return;
+
+    const { userId, id: jobIdNum } = campaign;
+    const jobId = jobIdNum.toString();
+
+    // Ensure it's in the memory cache for the UI polling
+    if (!jobs[userId]) jobs[userId] = {};
+    jobs[userId][jobId] = campaign.toObject();
+
+    console.log(`[WORKER] Starting/Resuming Campaign ${jobId} for user ${userId}`);
+
+    const { contacts, mapping, messageType, templateName, customMessage, config, processed } = campaign;
+    const { token: ACCESS_TOKEN, phoneId: PHONE_NUMBER_ID, wabaId: WABA_ID } = config;
+
+    // Smart Deduplication check (re-run to avoid overlaps)
+    const alreadySentSet = new Set();
+    campaign.results.forEach(r => {
+      const s = r.status.toLowerCase();
+      if (s.includes('✅') || s.includes('sent') || s.includes('delivered') || s.includes('read')) {
+        alreadySentSet.add(r.phone);
+      }
+    });
+
+    let template = null;
+    if (messageType !== 'text') {
+      const templates = await getMetaTemplatesForUser(WABA_ID, ACCESS_TOKEN);
+      template = templates.find(t => t.name === templateName);
+    }
+
+    let cachedHeaderMediaId = mapping?.header_media_url || null;
+
+    // THE WORK LOOP
+    for (let i = processed; i < contacts.length; i++) {
+      // Re-fetch level check for PAUSE/STOP status changes from other API calls
+      const currentJob = await Campaign.findById(campaignId);
+      if (!currentJob || currentJob.status === 'Stopped') break;
+
+      if (currentJob.status === 'Paused') {
+        console.log(`[WORKER] Campaign ${jobId} is Paused. Waiting 5s...`);
+        jobs[userId][jobId].status = 'Paused';
+        await sleep(5000);
+        i--; // Retry this index
+        continue;
+      }
+
+      jobs[userId][jobId].status = 'Running';
+
+      const contact = contacts[i];
+      const phone = String(contact[mapping.phone] || '').trim();
+      let cleanPhone = phone.replace(/\D/g, '');
+      if (cleanPhone.length === 10) cleanPhone = '91' + cleanPhone;
+
+      if (alreadySentSet.has(cleanPhone)) {
+        continue; 
+      }
+
+      await sleep(250);
+
+      let wamid = null, msgStatus = 'Pending', payload = null, error = null;
+
+      try {
+        if (messageType === 'text') {
+          let text = customMessage || '';
+          Object.keys(contact).forEach(k => {
+            text = text.replace(new RegExp(`{{\\s*${escapeRegExp(k)}\\s*}}`, 'gi'), contact[k] || '');
+          });
+          payload = buildTextPayload(cleanPhone, text);
+        } else {
+          payload = buildTemplatePayload(cleanPhone, template, mapping, contact, cachedHeaderMediaId);
+        }
+
+        const response = await axios.post(`https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`, payload, {
+          headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}`, 'Content-Type': 'application/json' }
+        });
+        
+        msgStatus = 'Sent ✅';
+        wamid = response.data.messages?.[0]?.id;
+
+        if (wamid) {
+          // Populating memory map for fast webhook lookups
+          wamidToJob[wamid] = { jobId, phone: cleanPhone, userId };
+          
+          // Persisting mapping for status survival after restart
+          new WamidMapping({
+            wamid,
+            userId,
+            jobId,
+            phone: cleanPhone
+          }).save().catch(err => console.error('[DB] WamidMapping Save Error:', err.message));
+
+          // Sync to individual Chat history
+          const outboundMsg = {
+              id: wamid,
+              from: 'me',
+              name: cleanPhone,
+              text: messageType === 'template' ? `[Sent Template: ${templateName}]` : (customMessage || ''),
+              timestamp: Date.now(),
+              type: messageType
+          };
+          Chat.findOneAndUpdate(
+              { userId: userId, phone: cleanPhone },
+              { 
+                  $push: { messages: outboundMsg },
+                  $set: { updatedAt: Date.now() }
+              },
+              { upsert: true }
+          ).catch(e => console.warn('[DB] Outbound sync skip:', e.message));
+        }
+      } catch (err) {
+        error = err.response?.data?.error ? mapMetaError(err.response.data.error) : err.message;
+        msgStatus = `Failed ❌ (${error})`;
+      }
+
+      // PERSIST PROGRESS
+      const updateData = {
+        $inc: { processed: 1 },
+        $push: {
+          results: {
+            phone: cleanPhone,
+            name: contact[mapping.name] || 'Customer',
+            status: msgStatus,
+            error: error,
+            wamid: wamid,
+            timestamp: new Date()
+          }
+        }
+      };
+      if (msgStatus.includes('✅')) updateData.$inc.sent = 1;
+      else updateData.$inc.failed = 1;
+
+      const updatedCampaign = await Campaign.findByIdAndUpdate(campaignId, updateData, { new: true });
+      jobs[userId][jobId] = updatedCampaign.toObject();
+    }
+
+    const finalStatus = (await Campaign.findById(campaignId)).status;
+    if (finalStatus !== 'Stopped') {
+        const finishedCampaign = await Campaign.findByIdAndUpdate(campaignId, { status: 'Completed' }, { new: true });
+        jobs[userId][jobId] = finishedCampaign.toObject();
+        console.log(`[WORKER] Campaign ${jobId} Completed!`);
+    }
+
+  } catch (workerErr) {
+    console.error(`[WORKER FATAL ERROR]`, workerErr);
+    await Campaign.findByIdAndUpdate(campaignId, { status: 'Error' });
+  }
+}
+
+async function resumeActiveCampaigns() {
+    try {
+        const active = await Campaign.find({ status: { $in: ['Running', 'Paused'] } });
+        console.log(`[STARTUP] Found ${active.length} active campaigns to maintain.`);
+        for (const campaign of active) {
+            runCampaignWorker(campaign._id);
+        }
+    } catch (err) {
+        console.error('[STARTUP] Resume Error:', err);
+    }
 }
 
 /**
@@ -645,273 +812,34 @@ app.post('/api/send', authenticateToken, async (req, res) => {
   }
 
   const { contacts, messageType, templateName, templateParams, customMessage, mapping } = req.body;
-  const jobId = Date.now().toString();
+  const jobId = Date.now();
 
-  // Initialize user-specific job store if needed
-  if (!jobs[userId]) jobs[userId] = {};
-
-  jobs[userId][jobId] = {
+  // Initialize Persistent Campaign record
+  const campaign = new Campaign({
     userId,
+    id: jobId,
     name: templateName || 'Custom Text Campaign',
     status: 'Running',
-    total: contacts.length,
-    processed: 0,
-    results: [],
-    createdAt: Date.now()
-  };
-
-  const { token: ACCESS_TOKEN, phoneId: PHONE_NUMBER_ID } = user.config;
-
-  // Process asynchronously
-  (async () => {
-    const userJobs = jobs[userId];
-    const validContacts = contacts.filter(c => c[mapping.phone] && c[mapping.phone].trim() !== '');
-    let template = null;
-    if (messageType !== 'text') {
-      const templates = await getMetaTemplatesForUser(user.config.wabaId, user.config.token);
-      template = templates.find(t => t.name === templateName);
+    totalContacts: contacts.length,
+    contacts,
+    messageType,
+    templateName,
+    templateParams,
+    customMessage,
+    mapping,
+    config: {
+        phoneId: user.config.phoneId,
+        token: user.config.token,
+        wabaId: user.config.wabaId
     }
+  });
 
-    // ═══ CAMPAIGN DIAGNOSTICS ═══
-    if (template) {
-      console.log(`[CAMPAIGN START] Template: ${template.name}`);
-      console.log(`[CAMPAIGN START] Format: ${template.format}`);
-      console.log(`[CAMPAIGN START] Language: ${template.language}`);
-      console.log(`[CAMPAIGN START] Header type: ${template.componentsData.header.type || 'NONE'}`);
-      console.log(`[CAMPAIGN START] Header imageUrl: ${template.componentsData.header.imageUrl ? 'PRESENT' : 'MISSING'}`);
-      console.log(`[CAMPAIGN START] Body variables: ${JSON.stringify(template.componentsData.body.variables)}`);
-      console.log(`[CAMPAIGN START] Body portalNames: ${JSON.stringify(template.componentsData.body.portalNames)}`);
-      console.log(`[CAMPAIGN START] Buttons: ${JSON.stringify(template.componentsData.buttons.map(b => b.type))}`);
-      console.log(`[CAMPAIGN START] Mapping keys: ${JSON.stringify(Object.keys(mapping))}`);
-      console.log(`[CAMPAIGN START] Mapping object: ${JSON.stringify(mapping)}`);
-      console.log(`[CAMPAIGN START] header_media_url from mapping: ${mapping.header_media_url || 'NOT SET'}`);
-      console.log(`[CAMPAIGN START] Contacts count: ${validContacts.length}`);
-      console.log(`[CAMPAIGN START] Sample contact keys: ${JSON.stringify(Object.keys(validContacts[0] || {}))}`);
-    }
+  await campaign.save();
 
-    // ═══ AUTO-DOWNLOAD TEMPLATE HEADER MEDIA ═══
-    // If template has an IMAGE/VIDEO/DOCUMENT header, automatically download 
-    // from Meta CDN and upload to get a Media ID (prevents Portuguese placeholder text)
-    let cachedHeaderMediaId = mapping.header_media_url || null;
-    if (template && template.componentsData.header.type && 
-        ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.componentsData.header.type)) {
-      
-      const header = template.componentsData.header;
-      
-      // If user already uploaded a file (media ID set), use that
-      if (cachedHeaderMediaId && !String(cachedHeaderMediaId).startsWith('http')) {
-        console.log(`[MEDIA] Using user-uploaded media ID: ${cachedHeaderMediaId}`);
-      } 
-      // Otherwise, auto-download from template's example image
-      else if (header.imageUrl) {
-        try {
-          console.log(`[MEDIA] Downloading template ${header.type} from Meta CDN...`);
-          const mediaResponse = await axios.get(header.imageUrl, { responseType: 'arraybuffer' });
-          const mediaBuffer = Buffer.from(mediaResponse.data);
-          
-          const contentType = mediaResponse.headers['content-type'] || 'application/octet-stream';
-          const extension = mime.extension(contentType) || 'bin';
-          const uploadsDir = path.join(__dirname, 'uploads');
-          if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-          const tmpPath = path.join(uploadsDir, `header_${Date.now()}.${extension}`);
-          
-          fs.writeFileSync(tmpPath, mediaBuffer);
-          console.log(`[MEDIA] ${header.type} downloaded (${mediaBuffer.length} bytes), uploading to Meta...`);
+  // Trigger the resilient worker
+  runCampaignWorker(campaign._id);
 
-          const formData = new FormData();
-          formData.append('messaging_product', 'whatsapp');
-          formData.append('file', fs.createReadStream(tmpPath), { 
-            filename: `header.${extension}`, 
-            contentType: contentType 
-          });
-
-          const uploadRes = await axios.post(
-            `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/media`,
-            formData,
-            { headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}`, ...formData.getHeaders() } }
-          );
-          
-          cachedHeaderMediaId = uploadRes.data.id;
-          console.log(`[MEDIA] Upload success! media_id = ${cachedHeaderMediaId}`);
-          
-          try { fs.unlinkSync(tmpPath); } catch(e) {}
-        } catch (uploadErr) {
-          console.error(`[MEDIA] ${header.type} auto-download failed:`, uploadErr.response?.data || uploadErr.message);
-          cachedHeaderMediaId = null;
-        }
-      } else {
-        console.warn(`[MEDIA] No example image URL in template and no file uploaded — header will be missing`);
-        cachedHeaderMediaId = null;
-      }
-    }
-
-    // ═══ SMART TEMPLATE DEDUPLICATION ═══
-    // Prevents sending the same template to the same number if they've received it successfully before
-    const campaignNameForDedup = templateName || 'Custom Text Campaign';
-    const alreadySentSet = new Set();
-
-    try {
-        const pastCampaigns = await Campaign.find(
-            { userId, name: campaignNameForDedup },
-            { "results.phone": 1, "results.status": 1 }
-        );
-        pastCampaigns.forEach(c => {
-            c.results.forEach(r => {
-                const s = r.status.toLowerCase();
-                if (s.includes('✅') || s.includes('sent') || s.includes('delivered') || s.includes('read')) {
-                    alreadySentSet.add(r.phone);
-                }
-            });
-        });
-        if (alreadySentSet.size > 0) {
-            console.log(`[DEDUP] Found ${alreadySentSet.size} previous successful recipients for "${campaignNameForDedup}". They will be skipped.`);
-        }
-    } catch (dedupErr) {
-        console.error('[DEDUP ERROR] Failed to fetch history:', dedupErr.message);
-    }
-
-    for (let contact of validContacts) {
-      if (userJobs[jobId].stopped) break;
-
-      await sleep(250);
-
-      while (userJobs[jobId] && userJobs[jobId].paused && !userJobs[jobId].stopped) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-
-      if (userJobs[jobId].stopped) break;
-
-      const phone = String(contact[mapping.phone] || '').trim();
-      let cleanPhone = phone.replace(/\D/g, '');
-      if (cleanPhone.length === 10) cleanPhone = '91' + cleanPhone;
-
-      // SKIP LOGIC: Deduplication
-      if (alreadySentSet.has(cleanPhone)) {
-        userJobs[jobId].results.push({
-            name: mapping.name ? contact[mapping.name] : 'Unknown',
-            phone: cleanPhone || phone || 'N/A',
-            status: 'Skipped ✅ (Duplicate)',
-            wamid: 'skipped_' + Date.now(),
-            details: { info: 'Already received this template in a previous campaign' }
-        });
-        userJobs[jobId].processed += 1;
-        console.log(`[DEDUP] Skipping duplicate recipient: ${cleanPhone}`);
-        continue;
-      }
-
-      let wamid = null;
-      let msgStatus = 'Pending';
-      let payload = null;
-
-      try {
-        // Modular Construction Logic
-        if (messageType === 'text') {
-          let text = customMessage || '';
-          Object.keys(contact).forEach(k => {
-            text = text.replace(new RegExp(`{{\\s*${escapeRegExp(k)}\\s*}}`, 'gi'), contact[k] || '');
-          });
-          payload = buildTextPayload(cleanPhone, text);
-        } else {
-          payload = buildTemplatePayload(cleanPhone, template, mapping, contact, cachedHeaderMediaId);
-        }
-
-        // Dedicated Sending Logic
-        console.log(`[SEND] Payload to ${cleanPhone.substring(0, 4)}***:`, JSON.stringify(payload, null, 2));
-
-        const response = await axios.post(`https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`, payload, {
-          headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}`, 'Content-Type': 'application/json' }
-        });
-        
-        msgStatus = 'Sent ✅';
-        wamid = response.data.messages?.[0]?.id;
-      } catch (err) {
-        // Standardized Multi-Tenant Error Handling
-        if (err.response?.data) {
-          console.error(`[META FULL ERROR] Phone: ${cleanPhone}`, JSON.stringify(err.response.data, null, 2));
-        } else {
-          console.error(`[ERROR] Phone: ${cleanPhone}`, err.message);
-        }
-
-        const subCode = err.response?.data?.error?.error_subcode || err.response?.data?.error?.code;
-        if (subCode === 131030) {
-          msgStatus = 'Failed ❌ (Not on WhatsApp or Rate Limited)';
-        } else {
-          const metaErrObj = err.response?.data?.error;
-          msgStatus = metaErrObj ? `Failed: ${mapMetaError(metaErrObj)}` : `Failed: ${err.message}`;
-        }
-      }
-
-      if (wamid) {
-        wamidToJob[wamid] = { jobId, phone: cleanPhone, userId };
-        sentHistory[cleanPhone] = { sentAt: Date.now(), jobId };
-        
-        // PERSIST WAMID MAPPING (for status survival after restart)
-        new WamidMapping({
-          wamid,
-          userId,
-          jobId,
-          phone: cleanPhone
-        }).save().catch(err => console.error('[DB] WamidMapping Save Error:', err.message));
-      }
-
-      userJobs[jobId].results.push({
-        name: mapping.name ? contact[mapping.name] : 'Unknown',
-        phone: cleanPhone || phone || 'N/A',
-        status: msgStatus,
-        wamid: wamid,
-        details: messageType === 'template' ? payload.template : { text: customMessage }
-      });
-      userJobs[jobId].processed += 1;
-
-      // Track outbound message in individual Chat history
-      try {
-          const outboundMsg = {
-              id: wamid || `bulk_${Date.now()}`,
-              from: 'me',
-              name: cleanPhone,
-              text: messageType === 'template' ? `[Sent Template: ${template.name}]` : (customMessage || ''),
-              timestamp: Date.now(),
-              type: messageType
-          };
-          await Chat.findOneAndUpdate(
-              { userId: userId, phone: cleanPhone },
-              { 
-                  $push: { messages: outboundMsg },
-                  $set: { updatedAt: Date.now() }
-              },
-              { upsert: true }
-          ).catch(e => console.warn('[DB] Outbound sync skip:', e.message));
-      } catch (trackErr) {
-          console.error('[DB] Failed to track matching message in inbox');
-      }
-
-      // Persistence to MongoDB (Scoped to User)
-      if (userJobs[jobId].processed === userJobs[jobId].total) {
-          userJobs[jobId].status = 'Completed';
-          const finalJob = userJobs[jobId];
-          const campaign = new Campaign({
-              userId,
-              id: parseInt(jobId.slice(-6)),
-              name: finalJob.name,
-              status: finalJob.status,
-              totalContacts: finalJob.total,
-              sent: finalJob.results.filter(r => r.status.includes('✅')).length,
-              failed: finalJob.results.filter(r => r.status.includes('Failed')).length,
-              results: finalJob.results.map(r => ({
-                phone: r.phone,
-                name: r.name,
-                status: r.status,
-                wamid: r.wamid
-              }))
-          });
-          await campaign.save();
-      }
-
-      await sleep(500); // Rate limiting
-    }
-  })();
-
-  res.json({ message: 'Campaign started successfully', jobId });
+  res.json({ message: 'Campaign started successfully', jobId: jobId.toString() });
 });
 
 // --- CAMPAIGN HISTORY (User Scoped) ---
@@ -951,51 +879,85 @@ app.post('/api/history/clear', authenticateToken, async (req, res) => {
 
 // Status Polling API
 app.get('/api/status/:jobId', authenticateToken, async (req, res) => {
-  const userJobs = jobs[req.user.id] || {};
-  const job = userJobs[req.params.jobId];
-  if (!job) return res.status(404).json({ error: 'Job not found' });
-  res.json(job);
+  const userId = req.user.id;
+  const jobId = req.params.jobId;
+
+  // 1. Check memory cache (for active jobs)
+  if (jobs[userId] && jobs[userId][jobId]) {
+    return res.json(jobs[userId][jobId]);
+  }
+
+  // 2. Fallback to DB
+  try {
+    const campaign = await Campaign.findOne({ userId, id: parseInt(jobId) });
+    if (campaign) return res.json(campaign);
+    res.status(404).json({ error: 'Job not found' });
+  } catch (err) {
+    res.status(500).json({ error: 'Database fetch failed' });
+  }
 });
 
 // Pause Campaign API
 app.post('/api/pause/:jobId', authenticateToken, async (req, res) => {
-  const userJobs = jobs[req.user.id] || {};
-  const job = userJobs[req.params.jobId];
-  if (!job) return res.status(404).json({ error: 'Job not found' });
-  if (job.status === 'Running' || job.status === 'Paused') {
-    job.paused = true;
-    job.status = 'Paused';
-    res.json({ message: 'Campaign paused', status: job.status });
-  } else {
-    res.status(400).json({ error: 'Only running campaigns can be paused' });
+  try {
+    const campaign = await Campaign.findOneAndUpdate(
+        { userId: req.user.id, id: parseInt(req.params.jobId), status: 'Running' },
+        { status: 'Paused' },
+        { new: true }
+    );
+    if (!campaign) return res.status(404).json({ error: 'Running campaign not found' });
+    
+    // Sync memory cache if it exists
+    if (jobs[req.user.id] && jobs[req.user.id][req.params.jobId]) {
+        jobs[req.user.id][req.params.jobId].status = 'Paused';
+    }
+    
+    res.json({ message: 'Campaign paused', status: 'Paused' });
+  } catch (err) {
+    res.status(500).json({ error: 'Update failed' });
   }
 });
 
 // Resume Campaign API
 app.post('/api/resume/:jobId', authenticateToken, async (req, res) => {
-  const userJobs = jobs[req.user.id] || {};
-  const job = userJobs[req.params.jobId];
-  if (!job) return res.status(404).json({ error: 'Job not found' });
-  if (job.status === 'Paused') {
-    job.paused = false;
-    job.status = 'Running';
-    res.json({ message: 'Campaign resumed', status: job.status });
-  } else {
-    res.status(400).json({ error: 'Only paused campaigns can be resumed' });
+  try {
+    const campaign = await Campaign.findOneAndUpdate(
+        { userId: req.user.id, id: parseInt(req.params.jobId), status: 'Paused' },
+        { status: 'Running' },
+        { new: true }
+    );
+    if (!campaign) return res.status(404).json({ error: 'Paused campaign not found' });
+
+    // Sync memory cache and ensure worker is running if dead
+    if (!jobs[req.user.id]?.[req.params.jobId] || jobs[req.user.id][req.params.jobId].status !== 'Running') {
+        runCampaignWorker(campaign._id);
+    } else {
+        jobs[req.user.id][req.params.jobId].status = 'Running';
+    }
+
+    res.json({ message: 'Campaign resumed', status: 'Running' });
+  } catch (err) {
+    res.status(500).json({ error: 'Update failed' });
   }
 });
 
 // Stop Campaign API
 app.post('/api/stop/:jobId', authenticateToken, async (req, res) => {
-  const userJobs = jobs[req.user.id] || {};
-  const job = userJobs[req.params.jobId];
-  if (!job) return res.status(404).json({ error: 'Job not found' });
-  if (job.status === 'Running' || job.status === 'Paused') {
-    job.stopped = true;
-    job.paused = false;
+  try {
+    const campaign = await Campaign.findOneAndUpdate(
+        { userId: req.user.id, id: parseInt(req.params.jobId), status: { $in: ['Running', 'Paused'] } },
+        { status: 'Stopped' },
+        { new: true }
+    );
+    if (!campaign) return res.status(404).json({ error: 'Active campaign not found' });
+
+    if (jobs[req.user.id] && jobs[req.user.id][req.params.jobId]) {
+        jobs[req.user.id][req.params.jobId].status = 'Stopped';
+    }
+
     res.json({ message: 'Campaign stopped' });
-  } else {
-    res.status(400).json({ error: 'Only active campaigns can be stopped' });
+  } catch (err) {
+    res.status(500).json({ error: 'Update failed' });
   }
 });
 
@@ -1648,7 +1610,12 @@ app.listen(port, () => {
     console.log(`Backend server running on http://127.0.0.1:${port}`);
     
     // Connect to MongoDB Atlas
-    connectDB();
+    connectDB().then(connected => {
+        if (connected) {
+            // Resume active campaigns from DB upon successful connection
+            resumeActiveCampaigns();
+        }
+    });
 
     // Start Webhook Tunnel (Only if NOT on Render)
     if (process.env.RENDER) {

@@ -45,15 +45,34 @@ const ChatSchema = new mongoose.Schema({
 // Ensure a phone number is unique ONLY within a specific user's scope
 ChatSchema.index({ userId: 1, phone: 1 }, { unique: true });
 
-// Campaign Schema: Stores history of bulk messaging campaigns per user
+// Campaign Schema: Stores history and state of bulk messaging campaigns per user
 const CampaignSchema = new mongoose.Schema({
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     id: { type: Number, required: true },
     name: { type: String, required: true },
-    status: { type: String, default: 'Running' },
+    status: { type: String, default: 'Running' }, // Running, Paused, Completed, Stopped, Error
+    
+    // Config used for this campaign (Resilience)
+    config: {
+        phoneId: String,
+        token: String,
+        wabaId: String
+    },
+    
+    // Inputs for Resume capability
+    messageType: String, // template, text
+    templateName: String,
+    templateParams: mongoose.Schema.Types.Mixed,
+    customMessage: String,
+    mapping: mongoose.Schema.Types.Mixed,
+    contacts: [mongoose.Schema.Types.Mixed], // Raw contacts data
+    
+    // Analytics/Progress
     totalContacts: { type: Number, default: 0 },
+    processed: { type: Number, default: 0 },
     sent: { type: Number, default: 0 },
     failed: { type: Number, default: 0 },
+    
     results: [{
         phone: String,
         name: String,
