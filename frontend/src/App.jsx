@@ -258,21 +258,31 @@ export default function App() {
     if (!isConfigured) { setMetaSynced(false); return; }
   }, [config, token]);
 
-  // JOB POLLING (Initial load only, sockets handle the rest)
+  // JOB POLLING (Safety Fallback + Sockets)
   useEffect(() => {
     if (!jobId || !token) return;
-    fetchWithAuth(`${API_BASE}/api/status/${jobId}`).then(r => r.json()).then(d => {
-      if (!d.error) setJobStatus(d);
-    }).catch(() => {});
+    const fetchStatus = () => {
+      fetchWithAuth(`${API_BASE}/api/status/${jobId}`).then(r => r.json()).then(d => {
+        if (!d.error) setJobStatus(d);
+        if (d.status === 'Completed' || d.status === 'Stopped') {
+           fetchWithAuth(`${API_BASE}/api/history`).then(r => r.json()).then(d => { if (Array.isArray(d)) setHistoryData(d); });
+        }
+      }).catch(() => {});
+    };
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 5000); // 5s safety poll
+    return () => clearInterval(interval);
   }, [jobId, token]);
 
-  // INBOX (Initial load and on tab switch)
+  // INBOX (Initial load + 10s safety poll)
   useEffect(() => {
     if (!token) return;
     const fetchChats = () => {
       fetchWithAuth(`${API_BASE}/api/chats`).then(r => r.json()).then(d => { if (Array.isArray(d)) setChats(d); }).catch(() => {});
     };
     fetchChats();
+    const interval = setInterval(fetchChats, 10000); 
+    return () => clearInterval(interval);
   }, [token, activeTab]);
 
   useEffect(() => {
@@ -281,6 +291,8 @@ export default function App() {
       fetchWithAuth(`${API_BASE}/api/chats/${activeChatPhone}`).then(r => r.json()).then(d => { if (Array.isArray(d)) setActiveChatHistory(d); }).catch(() => {});
     };
     fetchHistory();
+    const interval = setInterval(fetchHistory, 5000);
+    return () => clearInterval(interval);
   }, [token, activeTab, activeChatPhone]);
 
   const unreadTotal = useMemo(() => chats.reduce((acc, c) => acc + (c.unreadCount || 0), 0), [chats]);
