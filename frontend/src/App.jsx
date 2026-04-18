@@ -317,16 +317,16 @@ export default function App() {
 
   const sortedChats = useMemo(() => {
     return [...chats].sort((a, b) => {
-      // Strictly use lastMessageAt for static behavior. Fallback to 0 if missing.
+      // Use numeric timestamps for precise comparison
       const dateA = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
       const dateB = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
       
       // 1. Primary sort: last message timestamp (newest first)
       if (dateB !== dateA) return dateB - dateA;
       
-      // 2. Stable secondary sort: phone number (alphabetical)
-      // This ensures ties remain static and don't jump when unread status changes
-      return (a.phone || '').localeCompare(b.phone || '');
+      // 2. Absolute Tie-breaker (Descending based on ID/Phone)
+      // This ensures that even in the same millisecond, the order never shifts.
+      return (b._id || b.phone || '').localeCompare(a._id || a.phone || '');
     });
   }, [chats]);
 

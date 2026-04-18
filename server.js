@@ -39,6 +39,13 @@ const connectDB = async () => {
         }
         await mongoose.connect(uri);
         console.log('[DB] ✅ Connected to MongoDB Atlas');
+        
+        // Migration: Ensure all legacy chats have a lastMessageAt field for stable sorting
+        await Chat.updateMany(
+            { lastMessageAt: { $exists: false } },
+            [{ $set: { lastMessageAt: "$updatedAt" } }]
+        );
+        
         return true;
     } catch (err) {
         console.error('[DB] ❌ Connection error:', err.message);
@@ -1318,7 +1325,7 @@ app.get('/api/chats', authenticateToken, async (req, res) => {
     const dbChats = await Chat.find({ 
       userId: req.user.id,
       "messages.from": "customer" 
-    }).sort({ lastMessageAt: -1 });
+    }).sort({ lastMessageAt: -1, _id: -1 });
     res.json(dbChats);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch chats' });
