@@ -220,7 +220,7 @@ async function runCampaignWorker(campaignId) {
 
     console.log(`[WORKER] Starting/Resuming Campaign ${jobId} for user ${userId}`);
 
-    const { contacts, mapping, messageType, templateName, customMessage, config, processed } = campaign;
+    const { contacts, mapping, messageType, templateName, customMessage, config, processed, allowDuplicates } = campaign;
     const { token: ACCESS_TOKEN, phoneId: PHONE_NUMBER_ID, wabaId: WABA_ID } = config;
 
     // Smart Deduplication check (re-run to avoid overlaps)
@@ -266,7 +266,21 @@ async function runCampaignWorker(campaignId) {
       // --- DEDUPLICATION CHECK ---
       if (alreadySentSet.has(cleanPhone)) {
         msgStatus = 'Skipped ✅ (Duplicate)';
-        console.log(`[WORKER] Skipping duplicate: ${cleanPhone}`);
+        console.log(`[WORKER] Skipping duplicate in current campaign: ${cleanPhone}`);
+      } else if (!allowDuplicates && messageType === 'template') {
+        const historyCheck = await Chat.findOne({
+            userId,
+            phone: cleanPhone,
+            "messages.text": `[Sent Template: ${templateName}]`
+        });
+        if (historyCheck) {
+            msgStatus = 'Skipped ✅ (Template History)';
+            console.log(`[WORKER] Skipping duplicate from history: ${cleanPhone} for template ${templateName}`);
+        }
+      }
+
+      if (msgStatus.includes('Skipped')) {
+        // No action needed, proceed to persistence
       } else {
         await sleep(250);
         try {
@@ -809,7 +823,7 @@ app.post('/api/send', authenticateToken, async (req, res) => {
     return res.status(400).json({ error: 'WhatsApp Credentials not configured for your account' });
   }
 
-  const { contacts, messageType, templateName, templateParams, customMessage, mapping } = req.body;
+  const { contacts, messageType, templateName, templateParams, customMessage, mapping, allowDuplicates } = req.body;
   const jobId = Date.now();
 
   // Initialize Persistent Campaign record
@@ -825,6 +839,7 @@ app.post('/api/send', authenticateToken, async (req, res) => {
     templateParams,
     customMessage,
     mapping,
+    allowDuplicates: !!allowDuplicates,
     config: {
         phoneId: user.config.phoneId,
         token: user.config.token,

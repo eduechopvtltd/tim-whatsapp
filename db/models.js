@@ -67,6 +67,7 @@ const CampaignSchema = new mongoose.Schema({
     customMessage: String,
     mapping: mongoose.Schema.Types.Mixed,
     contacts: [mongoose.Schema.Types.Mixed], // Raw contacts data
+    allowDuplicates: { type: Boolean, default: false },
     
     // Analytics/Progress
     totalContacts: { type: Number, default: 0 },

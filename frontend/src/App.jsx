@@ -108,6 +108,7 @@ export default function App() {
   const [emailConfig, setEmailConfig] = useState({ enabled: false, smtpHost: '', smtpPort: 587, smtpUser: '', smtpPass: '', notifyEmail: '' });
   const [isSavingEmail, setIsSavingEmail] = useState(false);
   const [isTestingEmail, setIsTestingEmail] = useState(false);
+  const messagesEndRef = useRef(null);
 
   // ═══════════ AUTH FUNCTIONS ═══════════
   const handleAuth = async (e) => {
@@ -332,6 +333,13 @@ export default function App() {
 
   useEffect(() => { const t = setTimeout(() => setDebouncedSearch(searchTerm), 300); return () => clearTimeout(t); }, [searchTerm]);
   useEffect(() => { const t = setTimeout(() => setDebouncedHistorySearch(historySearchTerm), 300); return () => clearTimeout(t); }, [historySearchTerm]);
+
+  // INSTANT JUMP TO BOTTOM
+  useEffect(() => {
+    if (activeChatHistory.length > 0) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+    }
+  }, [activeChatHistory]);
 
   // FETCH CAMPAIGN DETAILS
   const handleExpandHistory = async (job) => {
@@ -1245,6 +1253,7 @@ export default function App() {
                                      <span className="text-[8px] font-bold text-slate-600 mt-1.5 uppercase tracking-widest px-1">{msg.timestamp ? new Date(parseInt(msg.timestamp)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
                                   </div>
                                ))}
+                               <div ref={messagesEndRef} />
                             </div>
                             <form onSubmit={handleSendReply} className="p-4 lg:p-6 bg-white/[0.01] border-t border-border-dim space-y-3 relative">
                                <AnimatePresence>
