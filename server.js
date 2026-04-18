@@ -1468,7 +1468,7 @@ setInterval(async () => {
 
 // --- HOOKDECK AUTOMATIC SYNC ---
 async function triggerHookdeckSync() {
-    const apiKey = process.env.HOOKDECK_API_KEY;
+    const apiKey = (process.env.HOOKDECK_API_KEY || '').trim();
     const sourceName = process.env.HOOKDECK_SOURCE_NAME;
     
     if (!apiKey || !sourceName) {
@@ -1482,7 +1482,7 @@ async function triggerHookdeckSync() {
         // Step 0: Resolve Source ID if not already resolved
         if (!resolvedSourceId) {
             console.log('[HOOKDECK SYNC] Resolving Source ID...');
-            const sourcesRes = await axios.get('https://api.hookdeck.com/2024-03-01/sources', {
+            const sourcesRes = await axios.get('https://api.hookdeck.com/v1/sources', {
                 headers: { 'Authorization': `Bearer ${apiKey}` }
             });
             const source = sourcesRes.data.models.find(s => s.name === sourceName);
@@ -1498,7 +1498,7 @@ async function triggerHookdeckSync() {
 
         // Step 1: Find Destination ID
         console.log('[HOOKDECK SYNC] Fetching connections...');
-        const connRes = await axios.get('https://api.hookdeck.com/2024-03-01/connections', {
+        const connRes = await axios.get('https://api.hookdeck.com/v1/connections', {
             headers: { 'Authorization': `Bearer ${apiKey}` },
             params: { source_id: sourceId }
         });
@@ -1508,7 +1508,7 @@ async function triggerHookdeckSync() {
         
         if (!destinationId) {
             console.log('[HOOKDECK SYNC] No connection found via API. Searching recent events...');
-            const eventRes = await axios.get('https://api.hookdeck.com/2024-03-01/events', {
+            const eventRes = await axios.get('https://api.hookdeck.com/v1/events', {
                 headers: { 'Authorization': `Bearer ${apiKey}` },
                 params: { source_id: sourceId, limit: 1 }
             });
@@ -1526,7 +1526,7 @@ async function triggerHookdeckSync() {
 
         // Step 2: Trigger Bulk Retry for FAILED events
         console.log('[HOOKDECK SYNC] Triggering bulk retry for failed events...');
-        const retryRes = await axios.post('https://api.hookdeck.com/2024-03-01/bulk/events/retry', {
+        const retryRes = await axios.post('https://api.hookdeck.com/v1/bulk/events/retry', {
             query: {
                 source_id: [sourceId],
                 destination_id: [destinationId],
@@ -1546,7 +1546,7 @@ async function triggerHookdeckSync() {
 let webhookProcess = null;
 
 async function updateHookdeckDestination(newUrl) {
-    const apiKey = process.env.HOOKDECK_API_KEY;
+    const apiKey = (process.env.HOOKDECK_API_KEY || '').trim();
     if (!apiKey || !hookdeckDestinationId) {
         console.log('[BRIDGE] Skipping Hookdeck update: Missing API Key or Destination ID.');
         return;
@@ -1554,7 +1554,7 @@ async function updateHookdeckDestination(newUrl) {
 
     try {
         console.log(`[BRIDGE] Updating Hookdeck destination ${hookdeckDestinationId} to: ${newUrl}`);
-        await axios.patch(`https://api.hookdeck.com/2024-03-01/destinations/${hookdeckDestinationId}`, {
+        await axios.patch(`https://api.hookdeck.com/v1/destinations/${hookdeckDestinationId}`, {
             config: { url: `${newUrl}/webhook` }
         }, {
             headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }
@@ -1566,7 +1566,7 @@ async function updateHookdeckDestination(newUrl) {
 }
 
 function startWebhookTunnel() {
-    const apiKey = process.env.HOOKDECK_API_KEY;
+    const apiKey = (process.env.HOOKDECK_API_KEY || '').trim();
     const sourceName = process.env.HOOKDECK_SOURCE_NAME;
     const subdomain = process.env.LT_SUBDOMAIN;
     
