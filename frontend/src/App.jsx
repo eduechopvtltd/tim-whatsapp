@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { io } from "socket.io-client";
 import { 
   Plus, 
   House, 
@@ -143,6 +144,85 @@ export default function App() {
     localStorage.removeItem('tim_user');
   };
 
+  // ═══════════ REAL-TIME CORE (SOCKET.IO) ═══════════
+  const socket = useMemo(() => {
+    if (!token) return null;
+    return io(API_BASE);
+  }, [token]);
+
+  useEffect(() => {
+    if (!socket || !user) return;
+
+    socket.on('connect', () => {
+      console.log('[Socket] Connected to server');
+      socket.emit('join', user.id || user._id);
+    });
+
+    socket.on('status_update', ({ jobId: updatedJobId, phone: updatedPhone, status: newStatus }) => {
+      // Update global job status if active
+      if (jobId === updatedJobId) {
+        setJobStatus(prev => {
+          if (!prev) return null;
+          const updatedResults = prev.results.map(r => 
+            r.phone === updatedPhone ? { ...r, status: newStatus } : r
+          );
+          return { ...prev, results: updatedResults };
+        });
+      }
+
+      // Update history list in-place
+      setHistoryData(prev => prev.map(job => {
+        const jId = (job.id || job._id || '').toString();
+        if (jId === updatedJobId || jId.slice(-6) === updatedJobId.slice(-6)) {
+          const updatedResults = job.results?.map(r => 
+            r.phone === updatedPhone ? { ...r, status: newStatus } : r
+          );
+          return { ...job, results: updatedResults };
+        }
+        return job;
+      }));
+    });
+
+    socket.on('campaign_progress', ({ jobId: progJobId, status: newProgress }) => {
+      if (jobId === progJobId) {
+        setJobStatus(newProgress);
+      }
+      setHistoryData(prev => prev.map(job => {
+        const jId = (job.id || job._id || '').toString();
+        if (jId === progJobId || jId.slice(-6) === progJobId.slice(-6)) {
+          return { ...job, ...newProgress };
+        }
+        return job;
+      }));
+    });
+
+    socket.on('new_message', ({ phone, name, text, type }) => {
+      // Refresh current chat history if open
+      if (activeChatPhone === phone) {
+        fetchWithAuth(`${API_BASE}/api/chats/${phone}`).then(r => r.json()).then(d => { 
+          if (Array.isArray(d)) setActiveChatHistory(d); 
+        });
+      }
+      // Refresh global chat list for unread counts
+      fetchWithAuth(`${API_BASE}/api/chats`).then(r => r.json()).then(d => { 
+        if (Array.isArray(d)) setChats(d); 
+      });
+
+      // Play sound and show notification if appropriate
+      if (notificationSound) notificationSound.play().catch(() => {});
+      if ("Notification" in window && Notification.permission === "granted") {
+        new Notification(`New message from ${name}`, { body: text });
+      }
+    });
+
+    return () => {
+      socket.off('connect');
+      socket.off('status_update');
+      socket.off('campaign_progress');
+      socket.off('new_message');
+    };
+  }, [socket, user, jobId, activeChatPhone]);
+
   // ═══════════ FETCH WITH AUTH ═══════════
   const fetchWithAuth = (url, options = {}) => {
     return fetch(url, {
@@ -178,33 +258,21 @@ export default function App() {
     if (!isConfigured) { setMetaSynced(false); return; }
   }, [config, token]);
 
-  // JOB POLLING
+  // JOB POLLING (Initial load only, sockets handle the rest)
   useEffect(() => {
     if (!jobId || !token) return;
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetchWithAuth(`${API_BASE}/api/status/${jobId}`);
-        const data = await res.json();
-        if (data.error) { setJobId(null); return; }
-        setJobStatus(data);
-        if (data.status === 'Completed' || data.status === 'Stopped') {
-          clearInterval(interval);
-          fetchWithAuth(`${API_BASE}/api/history`).then(r => r.json()).then(d => { if (Array.isArray(d)) setHistoryData(d); });
-        }
-      } catch (e) {}
-    }, 2000);
-    return () => clearInterval(interval);
+    fetchWithAuth(`${API_BASE}/api/status/${jobId}`).then(r => r.json()).then(d => {
+      if (!d.error) setJobStatus(d);
+    }).catch(() => {});
   }, [jobId, token]);
 
-  // INBOX POLLING
+  // INBOX (Initial load and on tab switch)
   useEffect(() => {
     if (!token) return;
     const fetchChats = () => {
       fetchWithAuth(`${API_BASE}/api/chats`).then(r => r.json()).then(d => { if (Array.isArray(d)) setChats(d); }).catch(() => {});
     };
     fetchChats();
-    const interval = setInterval(fetchChats, 5000);
-    return () => clearInterval(interval);
   }, [token, activeTab]);
 
   useEffect(() => {
@@ -213,8 +281,6 @@ export default function App() {
       fetchWithAuth(`${API_BASE}/api/chats/${activeChatPhone}`).then(r => r.json()).then(d => { if (Array.isArray(d)) setActiveChatHistory(d); }).catch(() => {});
     };
     fetchHistory();
-    const interval = setInterval(fetchHistory, 3000);
-    return () => clearInterval(interval);
   }, [token, activeTab, activeChatPhone]);
 
   const unreadTotal = useMemo(() => chats.reduce((acc, c) => acc + (c.unreadCount || 0), 0), [chats]);

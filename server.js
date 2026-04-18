@@ -1,4 +1,6 @@
 const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
 const path = require('path');
 const fs = require('fs');
 const cors = require('cors');
@@ -18,11 +20,31 @@ const { User, Chat, Campaign, GlobalState, WamidMapping } = require('./db/models
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_for_dev_only';
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, { 
+    cors: { origin: "*", methods: ["GET", "POST"] } 
+});
 const port = process.env.PORT || 3001;
 const upload = multer({ dest: 'uploads/' });
 const WEBHOOK_VERIFY_TOKEN = process.env.WEBHOOK_VERIFY_TOKEN || 'my_secret_token';
 let resolvedSourceId = null;
 let hookdeckDestinationId = process.env.HOOKDECK_DESTINATION_ID;
+
+// Socket.io Connection Handler
+io.on('connection', (socket) => {
+    console.log('[Socket] New connection:', socket.id);
+    
+    socket.on('join', (userId) => {
+        if (userId) {
+            socket.join(userId.toString());
+            console.log(`[Socket] Socket ${socket.id} joined room: ${userId}`);
+        }
+    });
+
+    socket.on('disconnect', () => {
+        console.log('[Socket] Disconnected:', socket.id);
+    });
+});
 
 // In-memory status tracking managed below in persistence block
 
@@ -373,6 +395,9 @@ async function runCampaignWorker(campaignId) {
 
       const updatedCampaign = await Campaign.findByIdAndUpdate(campaignId, updateData, { new: true });
       jobs[userId][jobId] = updatedCampaign.toObject();
+
+      // Real-time Campaign Progress update
+      io.to(userId.toString()).emit('campaign_progress', { jobId, status: jobs[userId][jobId] });
     }
 
     const finalStatus = (await Campaign.findById(campaignId)).status;
@@ -1255,6 +1280,8 @@ app.post('/webhook', async (req, res) => {
                 { $set: { "results.$.status": result.status } }
               ).catch(err => console.error('[Webhook] DB Sync Error:', err.message));
 
+              // Real-time Status Update
+              io.to(userId.toString()).emit('status_update', { jobId, phone, status: result.status });
               console.log(`[Webhook] Updated Job ${jobId} status for ${phone} to ${result.status}`);
             }
           }
@@ -1348,6 +1375,14 @@ app.post('/webhook', async (req, res) => {
                 },
                 { upsert: true }
             );
+            
+            // Real-time notification for Inbox
+            io.to(userId.toString()).emit('new_message', { 
+                phone: from, 
+                name: profileName, 
+                text: text,
+                type: msg.type
+            });
             
             // TRIGGER EMAIL NOTIFICATION
             sendEmailNotification(userId, {
@@ -1631,63 +1666,11 @@ async function updateHookdeckDestination(newUrl) {
     }
 }
 
-function startWebhookTunnel() {
-    const apiKey = (process.env.HOOKDECK_API_KEY || '').trim();
-    const sourceName = process.env.HOOKDECK_SOURCE_NAME;
-    const subdomain = process.env.LT_SUBDOMAIN;
-    
-    if (process.env.RENDER) {
-        console.log(`[WEBHOOK TUNNEL] Running on Render Cloud. Skipping LocalTunnel.`);
-        return;
-    }
-    
-    console.log(`[WEBHOOK TUNNEL] Starting LocalTunnel...`);
-    
-    // Command: [path-to-lt] --port 3001 --subdomain [name]
-    const ltPath = '/home/sahil/.npm/_npx/75ac80b86e83d4a2/node_modules/.bin/lt';
-    const args = [
-        '--port', `${port}`
-    ];
-    
-    if (subdomain) {
-        args.push('--subdomain', subdomain);
-        console.log(`[WEBHOOK TUNNEL] Requesting subdomain: ${subdomain}`);
-    }
+process.on('SIGINT', () => { process.exit(); });
+process.on('SIGTERM', () => { process.exit(); });
 
-    webhookProcess = spawn(ltPath, args, {
-        shell: false,
-        env: { ...process.env }
-    });
-
-    webhookProcess.stdout.on('data', (data) => {
-        const output = data.toString();
-        // Look for the tunnel URL in the output
-        if (output.includes('your url is:')) {
-            const url = output.split('your url is:')[1].trim();
-            console.log(`[WEBHOOK TUNNEL] Ready! Local URL: ${url}`);
-            
-            // AUTOMATIC BRIDGE: Tell Hookdeck where we are!
-            updateHookdeckDestination(url);
-        }
-    });
-
-    webhookProcess.stderr.on('data', (data) => {
-        console.error(`[WEBHOOK TUNNEL ERROR] ${data.toString().trim()}`);
-    });
-
-    webhookProcess.on('close', (code) => {
-        console.log(`[WEBHOOK TUNNEL] Process exited with code ${code}`);
-        webhookProcess = null;
-    });
-}
-
-// Ensure processes are killed when Node exits
-process.on('exit', () => { if (webhookProcess) webhookProcess.kill(); });
-process.on('SIGINT', () => { if (webhookProcess) webhookProcess.kill(); process.exit(); });
-process.on('SIGTERM', () => { if (webhookProcess) webhookProcess.kill(); process.exit(); });
-
-app.listen(port, () => {
-    console.log(`Backend server running on http://127.0.0.1:${port}`);
+server.listen(port, () => {
+    console.log(`[SERVER] Real-time messaging service running on port ${port}`);
     
     // Connect to MongoDB Atlas
     connectDB().then(connected => {
@@ -1697,7 +1680,7 @@ app.listen(port, () => {
         }
     });
 
-    // Start Webhook Tunnel (Only if NOT on Render)
+    // RENDER / CLOUD BRIDGE: Tell Hookdeck where we are!
     if (process.env.RENDER) {
         const renderUrl = process.env.RENDER_EXTERNAL_URL;
         console.log(`[BRIDGE] Detected Render Cloud environment.`);
@@ -1706,10 +1689,8 @@ app.listen(port, () => {
         } else {
             console.warn('[BRIDGE] RENDER_EXTERNAL_URL not found. Please ensure it is set in environment.');
         }
-    } else {
-        startWebhookTunnel();
     }
     
-    // Trigger Hookdeck sync (wait a bit to ensure tunnel is active if needed)
+    // Trigger Hookdeck sync 
     setTimeout(triggerHookdeckSync, 5000);
 });
