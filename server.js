@@ -1482,7 +1482,7 @@ async function triggerHookdeckSync() {
         // Step 0: Resolve Source ID if not already resolved
         if (!resolvedSourceId) {
             console.log('[HOOKDECK SYNC] Resolving Source ID...');
-            const sourcesRes = await axios.get('https://api.hookdeck.com/2023-01-01/sources', {
+            const sourcesRes = await axios.get('https://api.hookdeck.com/2024-03-01/sources', {
                 headers: { 'Authorization': `Bearer ${apiKey}` }
             });
             const source = sourcesRes.data.models.find(s => s.name === sourceName);
@@ -1498,7 +1498,7 @@ async function triggerHookdeckSync() {
 
         // Step 1: Find Destination ID
         console.log('[HOOKDECK SYNC] Fetching connections...');
-        const connRes = await axios.get('https://api.hookdeck.com/2023-01-01/connections', {
+        const connRes = await axios.get('https://api.hookdeck.com/2024-03-01/connections', {
             headers: { 'Authorization': `Bearer ${apiKey}` },
             params: { source_id: sourceId }
         });
@@ -1508,7 +1508,7 @@ async function triggerHookdeckSync() {
         
         if (!destinationId) {
             console.log('[HOOKDECK SYNC] No connection found via API. Searching recent events...');
-            const eventRes = await axios.get('https://api.hookdeck.com/2023-01-01/events', {
+            const eventRes = await axios.get('https://api.hookdeck.com/2024-03-01/events', {
                 headers: { 'Authorization': `Bearer ${apiKey}` },
                 params: { source_id: sourceId, limit: 1 }
             });
@@ -1526,7 +1526,7 @@ async function triggerHookdeckSync() {
 
         // Step 2: Trigger Bulk Retry for FAILED events
         console.log('[HOOKDECK SYNC] Triggering bulk retry for failed events...');
-        const retryRes = await axios.post('https://api.hookdeck.com/2023-01-01/bulk/events/retry', {
+        const retryRes = await axios.post('https://api.hookdeck.com/2024-03-01/bulk/events/retry', {
             query: {
                 source_id: [sourceId],
                 destination_id: [destinationId],
@@ -1554,7 +1554,7 @@ async function updateHookdeckDestination(newUrl) {
 
     try {
         console.log(`[BRIDGE] Updating Hookdeck destination ${hookdeckDestinationId} to: ${newUrl}`);
-        await axios.put(`https://api.hookdeck.com/2023-01-01/destinations/${hookdeckDestinationId}`, {
+        await axios.patch(`https://api.hookdeck.com/2024-03-01/destinations/${hookdeckDestinationId}`, {
             config: { url: `${newUrl}/webhook` }
         }, {
             headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }
