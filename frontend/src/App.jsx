@@ -921,9 +921,12 @@ export default function App() {
                                       <div className="flex-1 space-y-2">
                                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Template Name</label>
                                          <div className="relative">
-                                            {metaSynced ? 'Meta API Synced' : 'Meta API Offline'}
-                                          </span>
-                                        </div>
+                                            <select value={selectedTemplate} onChange={e => setSelectedTemplate(e.target.value)} className="w-full bg-bg-surface border border-border-dim rounded-xl p-3.5 lg:p-4 text-xs lg:text-sm font-bold text-white outline-none appearance-none focus:border-emerald-500/30 transition-all">
+                                               <option value="">-- Choose Template --</option>
+                                               {templates.map(t => <option key={t.name} value={t.name}>{t.name} ({t.language})</option>)}
+                                            </select>
+                                            <CaretDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-600 pointer-events-none" size={14} />
+                                         </div>
                                       </div>
                                       <button onClick={handleRefreshTemplates} disabled={refreshingTemplates} className={cn("simple-btn bg-white/5 border border-border-dim text-slate-400 hover:text-emerald-500 hover:border-emerald-500/20 h-[46px] lg:h-[52px] px-3.5 mb-[1px]", refreshingTemplates && "animate-pulse")} title="Refresh templates">
                                          <ArrowsClockwise size={20} className={refreshingTemplates ? "animate-spin" : ""} />
