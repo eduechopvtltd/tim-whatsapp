@@ -756,7 +756,7 @@ export default function App() {
 
       <aside className={cn(
         "w-64 border-r border-border-dim flex flex-col pt-8 pb-6 px-4 shrink-0 bg-bg-base z-50 transition-transform duration-300",
-        "fixed inset-y-0 left-0 lg:relative lg:translate-x-0",
+        "fixed inset-y-0 left-0 lg:sticky lg:h-screen lg:top-0 lg:translate-x-0",
         sidebarOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         <div className="px-4 mb-8 flex items-center justify-between">
