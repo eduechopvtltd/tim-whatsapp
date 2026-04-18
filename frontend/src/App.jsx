@@ -648,7 +648,13 @@ export default function App() {
              <button className="lg:hidden p-2 -ml-2 text-slate-400 hover:text-white bg-white/5 rounded-lg border border-border-dim transition-all" onClick={() => setSidebarOpen(true)}><List size={20} weight="bold" /></button>
              <h2 className="text-lg lg:text-xl font-bold tracking-tight">{TAB_TITLES[activeTab]}</h2>
            </div>
-           <div className="flex items-center gap-3">
+           <div className="flex items-center gap-3 lg:gap-6">
+               <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.03] border border-white/[0.05]">
+                  <div className="w-5 h-5 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 font-black text-[9px] border border-emerald-500/20">
+                     {user?.username?.[0]?.toUpperCase() || 'U'}
+                  </div>
+                  <span className="text-[11px] font-bold text-slate-300 tracking-tight">{user?.username}</span>
+               </div>
               <div className="flex flex-col items-end gap-1">
                  <div className={cn("px-3 py-1 rounded-full text-[9px] lg:text-[10px] font-bold uppercase tracking-widest flex items-center gap-2", isConnected ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" : "bg-red-500/10 text-red-500 border border-red-500/20")}>
                     <div className={cn("w-1.5 h-1.5 rounded-full", isConnected ? "bg-emerald-500 animate-pulse" : "bg-red-500")} />
@@ -1507,7 +1513,7 @@ function SidebarLink({ active, onClick, icon: Icon, label, badge }) {
       {badge && (
         <span className={cn(
           "px-1.5 py-0.5 rounded-full text-[9px] font-black min-w-[18px] text-center shadow-sm",
-          active ? "bg-black/20 text-black" : "bg-emerald-500 text-black border border-emerald-500/20 shadow-emerald-500/10 animate-pulse"
+          active ? "bg-black/20 text-black" : "bg-emerald-500 text-black border border-emerald-500/20 shadow-emerald-500/10"
         )}>
           {badge}
         </span>
