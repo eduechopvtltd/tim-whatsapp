@@ -978,7 +978,7 @@ export default function App() {
 
               {/* ═══ SEND TAB ═══ */}
               {activeTab === 'send' && (
-                <motion.div key="send" {...PAGE_TRANSITION} className="max-w-6xl mx-auto flex flex-col md:flex-row gap-8 pb-20 items-start">
+                 <motion.div key="send" {...PAGE_TRANSITION} className="max-w-6xl mx-auto flex flex-col md:flex-row gap-8 pb-20">
                    {/* LEFT COLUMN: CONFIGURATION */}
                    <div className="flex-1 space-y-6 lg:space-y-8 min-w-0">
                       
@@ -1156,7 +1156,7 @@ export default function App() {
                    </div>
 
                    {/* RIGHT COLUMN: PREVIEW (STICKY) */}
-                    <div className="w-full lg:w-[350px] shrink-0 flex flex-col items-center lg:items-stretch pt-1.5">
+                    <div className="w-full lg:w-[350px] shrink-0 flex flex-col items-center lg:items-stretch pt-1.5 min-h-full relative">
                        <div className="sticky top-24 space-y-4 w-full max-w-[350px] self-start">
                          <div className="flex items-center justify-between px-2">
                             <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Live Preview</h3>
@@ -1489,9 +1489,9 @@ export default function App() {
                                  </div>
                                  <div className="mt-auto space-y-4">
                                     <div className="grid grid-cols-3 gap-2 px-1">
-                                 <p className="text-[10px] text-slate-700 mt-2">Full delivery details available in backend logs</p>
-                                 <p className="text-[10px] text-slate-700 mt-2">Full delivery details available in backend logs</p>
-                                 <p className="text-[10px] text-slate-700 mt-2">Full delivery details available in backend logs</p>
+                                     <div className="text-center"><p className="text-[8px] font-bold text-slate-500 uppercase mb-0.5">Sent</p><p className="text-xs font-bold text-emerald-500">{sent}</p></div>
+                                     <div className="text-center"><p className="text-[8px] font-bold text-slate-500 uppercase mb-0.5">Failed</p><p className="text-xs font-bold text-red-500">{failed}</p></div>
+                                     <div className="text-center"><p className="text-[8px] font-bold text-slate-500 uppercase mb-0.5">Total</p><p className="text-xs font-bold text-white">{total}</p></div>
                                     </div>
                                     <div className="flex items-center justify-between gap-3 pt-2">
                                        <div className="flex-1 space-y-1.5">
