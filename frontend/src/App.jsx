@@ -959,24 +959,24 @@ export default function App() {
                    <div className="flex-1 space-y-6 lg:space-y-8 min-w-0">
                       
                       {/* 1. UPLOAD CONTACTS */}
-                       <div className="simple-card space-y-6">
-                          <div className="section-header">
+                       <div className="simple-card space-y-4 lg:space-y-5">
+                          <div className="section-header !pb-4 !mb-4">
                              <div className="step-number">1</div>
                              <div>
                                 <h3 className="text-base lg:text-lg font-bold">Upload Contacts</h3>
-                                <p className="text-[10px] lg:text-xs text-slate-500">Pick a CSV file with your phone numbers.</p>
+                                <p className="text-[10px] lg:text-xs text-slate-500">Pick a CSV file with your contacts.</p>
                              </div>
                           </div>
                          <label className="block group cursor-pointer">
-                            <div className={cn("h-32 lg:h-40 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-2 transition-all", file ? "border-emerald-500/30 bg-emerald-500/5" : "border-border-dim bg-white/[0.01] hover:border-emerald-500/20")}>
+                            <div className={cn("rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 transition-all", file ? "h-24 border-emerald-500/30 bg-emerald-500/5" : "h-32 border-border-dim bg-white/[0.01] hover:border-emerald-500/20")}>
                                {file ? (
-                                  <div className="text-center px-4">
-                                     <CheckCircle size={28} className="text-emerald-500 mx-auto mb-2" weight="fill" />
-                                     <p className="text-sm font-bold text-white truncate max-w-[250px]">{file.name}</p>
-                                     <p className="text-[10px] text-emerald-500 font-bold uppercase mt-1">{csvData.length} Contacts Found</p>
+                                  <div className="text-center px-4 flex flex-col items-center">
+                                     <CheckCircle size={20} className="text-emerald-500 mb-1" weight="fill" />
+                                     <p className="text-xs font-bold text-white truncate max-w-[280px]">{file.name}</p>
+                                     <p className="text-[9px] text-emerald-500 font-bold uppercase mt-0.5">{csvData.length} Contacts Found</p>
                                   </div>
                                ) : (
-                                  <div className="text-center"><Plus size={22} className="text-slate-600 mb-2 mx-auto" weight="bold" /><p className="text-[10px] lg:text-xs font-bold text-slate-500 uppercase tracking-widest">Click to Upload CSV</p></div>
+                                  <div className="text-center"><Plus size={18} className="text-slate-600 mb-1 mx-auto" weight="bold" /><p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Click to Upload CSV</p></div>
                                )}
                             </div>
                             <input key={fileKey} type="file" accept=".csv" className="hidden" onChange={handleFileUpload} />
@@ -990,35 +990,35 @@ export default function App() {
                       </div>
 
                       {/* 2. CHOOSE MESSAGE */}
-                       <div className="simple-card space-y-6">
-                          <div className="section-header">
+                       <div className="simple-card space-y-4 lg:space-y-5">
+                          <div className="section-header !pb-4 !mb-4">
                              <div className="step-number">2</div>
                              <div className="flex-1">
                                 <h3 className="text-base lg:text-lg font-bold">Choose Message</h3>
                                 <p className="text-[10px] lg:text-xs text-slate-500">Pick a template or write a custom message.</p>
                              </div>
                           </div>
-                         <div className="space-y-6">
+                         <div className="space-y-4">
                              <div className="flex gap-2 p-1 bg-white/[0.02] border border-border-dim rounded-xl w-fit">
-                                <button onClick={() => setMessageType('template')} className={cn("px-6 lg:px-8 py-2.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all", messageType === 'template' ? "bg-emerald-500 text-black shadow-lg" : "text-slate-500 hover:text-slate-300")}>Template</button>
-                                <button onClick={() => setMessageType('custom')} className={cn("px-6 lg:px-8 py-2.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all", messageType === 'custom' ? "bg-emerald-500 text-black shadow-lg" : "text-slate-500 hover:text-slate-300")}>Custom</button>
+                                <button onClick={() => setMessageType('template')} className={cn("px-6 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all", messageType === 'template' ? "bg-emerald-500 text-black shadow-lg" : "text-slate-500 hover:text-slate-300")}>Template</button>
+                                <button onClick={() => setMessageType('custom')} className={cn("px-6 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all", messageType === 'custom' ? "bg-emerald-500 text-black shadow-lg" : "text-slate-500 hover:text-slate-300")}>Custom</button>
                              </div>
                              
                              {messageType === 'template' ? (
                                 <div className="space-y-5">
-                                   <div className="flex gap-3 items-end">
-                                      <div className="flex-1 space-y-2">
+                                   <div className="flex gap-2 items-end">
+                                      <div className="flex-1 space-y-1.5">
                                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Template Name</label>
                                          <div className="relative">
-                                            <select value={selectedTemplate} onChange={e => setSelectedTemplate(e.target.value)} className="w-full bg-bg-surface border border-border-dim rounded-xl p-3.5 lg:p-4 text-xs lg:text-sm font-bold text-white outline-none appearance-none focus:border-emerald-500/30 transition-all">
+                                            <select value={selectedTemplate} onChange={e => setSelectedTemplate(e.target.value)} className="w-full bg-bg-surface border border-border-dim rounded-xl p-3 text-xs font-bold text-white outline-none appearance-none focus:border-emerald-500/30 transition-all">
                                                <option value="">-- Choose Template --</option>
                                                {templates.map(t => <option key={t.name} value={t.name}>{t.name} ({t.language})</option>)}
                                             </select>
                                             <CaretDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-600 pointer-events-none" size={14} />
                                          </div>
                                       </div>
-                                      <button onClick={handleRefreshTemplates} disabled={refreshingTemplates} className={cn("simple-btn bg-white/5 border border-border-dim text-slate-400 hover:text-emerald-500 hover:border-emerald-500/20 h-[46px] lg:h-[52px] px-3.5 mb-[1px]", refreshingTemplates && "animate-pulse")} title="Refresh templates">
-                                         <ArrowsClockwise size={20} className={refreshingTemplates ? "animate-spin" : ""} />
+                                      <button onClick={handleRefreshTemplates} disabled={refreshingTemplates} className={cn("simple-btn bg-white/5 border border-border-dim text-slate-400 hover:text-emerald-500 hover:border-emerald-500/20 h-11 px-3 mb-[1px]", refreshingTemplates && "animate-pulse")} title="Refresh templates">
+                                         <ArrowsClockwise size={18} className={refreshingTemplates ? "animate-spin" : ""} />
                                       </button>
                                    </div>
 
