@@ -978,7 +978,7 @@ export default function App() {
 
               {/* ═══ SEND TAB ═══ */}
               {activeTab === 'send' && (
-                <motion.div key="send" {...PAGE_TRANSITION} className="max-w-6xl mx-auto flex flex-col md:flex-row gap-8 pb-20">
+                <motion.div key="send" {...PAGE_TRANSITION} className="max-w-6xl mx-auto flex flex-col md:flex-row gap-8 pb-20 items-start">
                    {/* LEFT COLUMN: CONFIGURATION */}
                    <div className="flex-1 space-y-6 lg:space-y-8 min-w-0">
                       
@@ -1156,8 +1156,8 @@ export default function App() {
                    </div>
 
                    {/* RIGHT COLUMN: PREVIEW (STICKY) */}
-                    <div className="w-full lg:w-[350px] shrink-0 flex flex-col items-center lg:items-stretch">
-                       <div className="sticky top-20 lg:top-24 space-y-4 w-full max-w-[350px] self-start">
+                    <div className="w-full lg:w-[350px] shrink-0 flex flex-col items-center lg:items-stretch pt-1.5">
+                       <div className="sticky top-24 space-y-4 w-full max-w-[350px] self-start">
                          <div className="flex items-center justify-between px-2">
                             <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Live Preview</h3>
                             <div className="flex items-center gap-2">
@@ -1441,8 +1441,7 @@ export default function App() {
                              <div className="simple-card text-center py-20 opacity-20 border-dashed">
                                 <Database size={40} className="mx-auto mb-4" />
                                 <p className="text-xs font-bold uppercase tracking-widest">Metadata payload truncated</p>
-                                <p className="text-[10px] mt-2">Deep logs are currently unavailable for this legacy entry.</p>
-                             </div>
+                                <p cl                             </div>
                            )}
                         </div>
                      </div>
@@ -1564,14 +1563,14 @@ export default function App() {
                                   setChats(prev => prev.map(c => c.phone === chat.phone ? { ...c, unreadCount: 0 } : c));
                                }}
                                className={cn(
-                                  "w-full flex items-center gap-4 px-4 py-3 border-b border-border-dim/30 transition-all relative group",
+                                  "w-full flex items-center gap-4 px-4 py-3 border-b border-border-dim/30 transition-all relative group text-left",
                                   activeChatPhone === chat.phone ? "bg-white/[0.07] shadow-sm" : "hover:bg-white/[0.03]"
                                )}
                             >
                                <div className="w-12 h-12 rounded-full bg-emerald-500/10 flex-shrink-0 flex items-center justify-center text-emerald-500 border border-emerald-500/10 font-bold overflow-hidden shadow-inner uppercase text-lg">
                                   {(chat.name || chat.phone).charAt(0)}
                                </div>
-                               <div className="flex-1 min-w-0 h-12 flex flex-col justify-center">
+                               <div className="flex-1 min-w-0 py-1">
                                   <div className="flex justify-between items-baseline mb-0.5">
                                      <span className="text-[15.5px] font-semibold text-[#e9edef] truncate tracking-tight">{chat.name || chat.phone}</span>
                                      {(chat.lastMessageAt || chat.updatedAt) && <span className={cn("text-[11px] font-bold uppercase tracking-wider", chat.unreadCount > 0 ? "text-emerald-500" : "text-slate-600")}>{new Date(chat.lastMessageAt || chat.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
