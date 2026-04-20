@@ -62,7 +62,7 @@ export default function App() {
   const [token, setToken] = useState(localStorage.getItem('tim_token') || '');
   const [user, setUser] = useState(JSON.parse(localStorage.getItem('tim_user') || 'null'));
   const [authView, setAuthView] = useState('login'); // login, signup, forgot, reset
-  const [authForm, setAuthForm] = useState({ username: '', password: '', email: '' });
+  const [authForm, setAuthForm] = useState({ username: '', password: '', confirmPassword: '', email: '' });
   const [authError, setAuthError] = useState('');
   const [resetToken, setResetToken] = useState(null);
 
@@ -133,7 +133,13 @@ export default function App() {
     let endpoint = '/auth/login';
     let payload = { ...authForm };
 
-    if (authView === 'signup') endpoint = '/auth/register';
+    if (authView === 'signup') {
+      if (authForm.password !== authForm.confirmPassword) {
+        setAuthError('Passwords do not match');
+        return;
+      }
+      endpoint = '/auth/register';
+    }
     if (authView === 'forgot') {
       endpoint = '/auth/forgot-password';
       payload = { email: authForm.email };
@@ -771,6 +777,9 @@ export default function App() {
             {(authView === 'login' || authView === 'signup' || authView === 'reset') && (
               <div className="space-y-1">
                 <SimpleInput label={authView === 'reset' ? 'New Password' : 'Password'} value={authForm.password} onChange={v => setAuthForm({...authForm, password: v})} placeholder="••••••••" isSensitive={true} />
+                {authView === 'signup' && (
+                  <SimpleInput label="Confirm Password" value={authForm.confirmPassword} onChange={v => setAuthForm({...authForm, confirmPassword: v})} placeholder="••••••••" isSensitive={true} />
+                )}
                 {authView === 'login' && (
                   <div className="flex justify-end">
                     <button type="button" onClick={() => { setAuthView('forgot'); setAuthError(''); }} className="text-[10px] font-bold text-slate-500 hover:text-emerald-500 transition-colors uppercase tracking-widest">Forgot Password?</button>
@@ -1808,16 +1817,33 @@ function MiniStat({ label, value, color = "text-white" }) {
 }
 
 function SimpleInput({ label, value, onChange, placeholder, isSensitive = false }) {
+  const [show, setShow] = useState(false);
+  const type = isSensitive ? (show ? 'text' : 'password') : 'text';
+
   return (
     <div className="space-y-2 pointer-events-auto">
        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">{label}</label>
-       <input 
-         type={isSensitive ? "password" : "text"}
-         value={value} 
-         onChange={e => onChange(e.target.value)} 
-         placeholder={placeholder} 
-         className={cn("w-full bg-bg-surface border border-border-dim rounded-xl p-3 lg:p-4 text-sm font-bold text-white outline-none focus:border-emerald-500/30 transition-all placeholder:text-slate-800", isSensitive && "tracking-[0.5em] font-mono")} 
-       />
+       <div className="relative">
+         <input 
+           type={type}
+           value={value} 
+           onChange={e => onChange(e.target.value)} 
+           placeholder={placeholder} 
+           className={cn(
+             "w-full bg-bg-surface border border-border-dim rounded-xl p-3 lg:p-4 text-sm font-bold text-white outline-none focus:border-emerald-500/30 transition-all placeholder:text-slate-800 pr-12", 
+             (isSensitive && !show) && "tracking-[0.5em] font-mono"
+           )} 
+         />
+         {isSensitive && (
+           <button 
+             type="button" 
+             onClick={() => setShow(!show)} 
+             className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-600 hover:text-emerald-500 transition-colors"
+           >
+             {show ? <EyeSlash size={18} /> : <Eye size={18} />}
+           </button>
+         )}
+       </div>
     </div>
   );
 }
