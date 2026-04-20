@@ -1686,8 +1686,8 @@ export default function App() {
                                     >
                                        <button type="button" onClick={() => document.getElementById('inbox-img').click()} className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-white/5 text-[#d1d7db] transition-all text-[14px] font-medium">
                                           <div className="w-8 h-8 rounded-full bg-[#bf59cf] flex items-center justify-center text-white"><ImageSquare size={18} weight="fill" /></div>
-                                          Photos & Videos
-                                       </button>
+                                           Photos & Videos
+                                        </button>
                                        <button type="button" onClick={() => document.getElementById('inbox-doc').click()} className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-white/5 text-[#d1d7db] transition-all text-[14px] font-medium">
                                           <div className="w-8 h-8 rounded-full bg-[#7f66ff] flex items-center justify-center text-white"><FileText size={18} weight="fill" /></div>
                                           Document
@@ -1703,6 +1703,9 @@ export default function App() {
                                  onChange={e => { setReplyText(e.target.value); if(showAttachmentMenu) setShowAttachmentMenu(false); }} 
                                  placeholder="Type a message" 
                                  className="flex-1 bg-[#2a3942] border-none rounded-lg p-2.5 px-4 text-[15px] font-medium text-white outline-none placeholder:text-slate-500 resize-none min-h-[42px] max-h-32 transition-all" 
+                                  onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendReply(e); } }} 
+                               />
+
                               <button type="submit" disabled={isSendingReply || (!replyText.trim() && !pendingAttachment)} className="p-2 text-slate-500 hover:text-emerald-500 disabled:opacity-30 transition-colors">
                                  {isSendingReply ? <ArrowsClockwise size={24} className="animate-spin" /> : <PaperPlaneTilt size={24} weight="fill" />}
                               </button>
