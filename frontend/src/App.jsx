@@ -767,7 +767,12 @@ export default function App() {
 
           <form onSubmit={handleAuth} className="space-y-4">
             {(authView === 'login' || authView === 'signup') && (
-              <SimpleInput label="Username" value={authForm.username} onChange={v => setAuthForm({...authForm, username: v})} placeholder="Enter your username" />
+              <SimpleInput 
+                label={authView === 'login' ? "Username or Email" : "Username"} 
+                value={authForm.username} 
+                onChange={v => setAuthForm({...authForm, username: v})} 
+                placeholder={authView === 'login' ? "Enter username or email" : "Choose a username"} 
+              />
             )}
             
             {(authView === 'signup' || authView === 'forgot') && (

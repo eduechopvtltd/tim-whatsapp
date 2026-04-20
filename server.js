@@ -160,7 +160,7 @@ app.post('/auth/register', async (req, res) => {
 app.post('/auth/login', async (req, res) => {
   try {
     const { username, password } = req.body;
-    const user = await User.findOne({ username });
+    const user = await User.findOne({ $or: [{ username }, { email: username }] });
     if (!user) return res.status(400).json({ error: 'Invalid username or password' });
 
     const isMatch = await bcrypt.compare(password, user.password);
