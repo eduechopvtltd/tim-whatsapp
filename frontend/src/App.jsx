@@ -978,9 +978,9 @@ export default function App() {
 
               {/* ═══ SEND TAB ═══ */}
               {activeTab === 'send' && (
-                 <motion.div key="send" {...PAGE_TRANSITION} className="max-w-6xl mx-auto flex flex-col md:flex-row gap-8 pb-20 items-start">
+                 <div key="send" className="max-w-6xl mx-auto flex flex-col md:flex-row gap-8 pb-20 items-start">
                    {/* LEFT COLUMN: CONFIGURATION */}
-                   <div className="flex-1 space-y-6 lg:space-y-8 min-w-0">
+                    <motion.div {...PAGE_TRANSITION} className="flex-1 space-y-6 lg:space-y-8 min-w-0">
                       
                        {/* 1. UPLOAD CONTACTS */}
                         <div className="simple-card space-y-4 lg:space-y-5">
@@ -1153,7 +1153,7 @@ export default function App() {
                             </button>
                          </div>
                       </div>
-                   </div>
+                   </motion.div>
 
                    {/* RIGHT COLUMN: PREVIEW (STICKY) */}
                     <div className="w-full lg:w-[350px] shrink-0 sticky top-24 space-y-4 z-10 pt-1.5">
@@ -1187,7 +1187,7 @@ export default function App() {
                            </div>
                          )}
                       </div>
-                </motion.div>
+                </div>
               )}
 
               {/* ═══ STATUS TAB ═══ */}
@@ -1703,9 +1703,6 @@ export default function App() {
                                  onChange={e => { setReplyText(e.target.value); if(showAttachmentMenu) setShowAttachmentMenu(false); }} 
                                  placeholder="Type a message" 
                                  className="flex-1 bg-[#2a3942] border-none rounded-lg p-2.5 px-4 text-[15px] font-medium text-white outline-none placeholder:text-slate-500 resize-none min-h-[42px] max-h-32 transition-all" 
-                                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendReply(e); } }} 
-                              />
-                              
                               <button type="submit" disabled={isSendingReply || (!replyText.trim() && !pendingAttachment)} className="p-2 text-slate-500 hover:text-emerald-500 disabled:opacity-30 transition-colors">
                                  {isSendingReply ? <ArrowsClockwise size={24} className="animate-spin" /> : <PaperPlaneTilt size={24} weight="fill" />}
                               </button>
@@ -1724,94 +1721,125 @@ export default function App() {
 
               {/* ═══ SETTINGS TAB ═══ */}
               {activeTab === 'settings' && (
-                <motion.div key="settings" {...PAGE_TRANSITION} className="max-w-2xl mx-auto py-4 lg:py-6">
-                   <div className="simple-card space-y-8 lg:space-y-10 p-6 lg:p-8">
-                      <div className="section-header !mb-8">
-                          <div className="flex items-center gap-3 lg:gap-4 flex-1">
-                             <div className="step-number"><Gear size={18} weight="bold" /></div>
-                                 <p className="text-xs font-medium text-slate-600">No records found for this section</p>
+                 <motion.div key="settings" {...PAGE_TRANSITION} className="max-w-3xl mx-auto py-8 lg:py-12 space-y-8">
+                    
+                    {/* 1. META API CONFIGURATION */}
+                    <div className="simple-card p-6 lg:p-10 space-y-8">
+                       <div className="flex items-center justify-between border-b border-white/5 pb-6">
+                          <div className="flex items-center gap-4">
+                             <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-500 border border-emerald-500/10">
+                                <Gear size={22} weight="bold" />
+                             </div>
+                             <div>
+                                <h3 className="text-sm font-bold text-white uppercase tracking-widest">Meta API Configuration</h3>
+                                <p className="text-[10px] text-slate-500 font-medium">Configure your Business API credentials</p>
+                             </div>
                           </div>
                           <button type="button" onClick={() => setRevealCredentials(!revealCredentials)} className={cn("flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all text-[10px] font-bold uppercase tracking-widest", revealCredentials ? "bg-amber-500/10 text-amber-500 border-amber-500/20" : "bg-white/5 text-slate-400 border-border-dim hover:text-white")}>
                              {revealCredentials ? <><EyeSlash size={14} weight="bold" /> Mask</> : <><Eye size={14} weight="bold" /> Reveal</>}
                           </button>
-                      </div>
-                      <form className="space-y-6 lg:space-y-8" onSubmit={async e => {
-                        e.preventDefault();
-                        setIsLoading(prev => ({ ...prev, config: true })); setStatus('Saving...');
-                        try {
-                           const res = await fetchWithAuth(`${API_BASE}/api/config`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(config) });
-                           if (res.ok) { setIsConnected(true); setRevealCredentials(false); setStatus('Settings saved! Refreshing templates...'); await handleRefreshTemplates(); }
-                           else { const err = await res.json(); setStatus(`Error: ${err.error || 'Save failed'}`); }
-                        } catch (e) { setStatus('Could not save — is the server running?'); } finally { setIsLoading(prev => ({ ...prev, config: false })); }
-                      }}>
-                         <div className="space-y-5 lg:space-y-6">
-                            <SimpleInput isSensitive={!revealCredentials} label="Phone Number ID" value={config.PHONE_NUMBER_ID} onChange={v => setConfig({...config, PHONE_NUMBER_ID: v})} placeholder="From Meta Business Portal" />
-                            <SimpleInput isSensitive={!revealCredentials} label="WABA ID" value={config.WABA_ID} onChange={v => setConfig({...config, WABA_ID: v})} placeholder="From Meta Business Portal" />
-                            <div className="space-y-2 relative group">
-                               <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Access Token</label>
-                               <textarea value={config.ACCESS_TOKEN} onChange={e => setConfig({...config, ACCESS_TOKEN: e.target.value})} className={cn("w-full h-28 lg:h-32 bg-bg-surface border border-border-dim rounded-xl p-4 text-xs font-mono outline-none focus:border-emerald-500/30 resize-none transition-all", !revealCredentials ? "text-transparent select-none filter blur-[2px]" : "text-white")} placeholder="Paste your Meta Graph API access token..." />
-                               {!revealCredentials && config.ACCESS_TOKEN && (<div className="absolute inset-0 top-6 flex items-center justify-center pointer-events-none"><span className="text-[10px] font-bold text-slate-700 uppercase tracking-[0.5em] tracking-widest px-4 py-2 border border-dashed border-slate-800 rounded-lg">CREDENTIALS MASKED</span></div>)}
-                            </div>
-                         </div>
-                         <button type="submit" disabled={isLoading.config} className="simple-btn btn-primary w-full h-12 lg:h-14 flex items-center justify-center gap-2">
-                            {isLoading.config ? 'Saving...' : <><CheckCircle weight="bold" size={18} /> Save Settings</>}
-                         </button>
-                      </form>
+                       </div>
 
-                      {/* --- EMAIL ALERTS SECTION --- */}
-                      <div className="pt-8 border-t border-border-dim space-y-8">
-                         <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3 lg:gap-4">
-                               <div className="w-9 h-9 lg:w-10 lg:h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500"><Envelope size={18} weight="bold" /></div>
-                                 <p className="text-xs font-medium text-slate-600">No records found for this section</p>
-                            </div>
-                            <button 
-                              onClick={() => setEmailConfig({...emailConfig, enabled: !emailConfig.enabled})}
-                              className={cn(
-                                "flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all text-[10px] lg:text-[11px] font-bold uppercase tracking-widest",
-                                emailConfig.enabled ? "bg-emerald-500 text-black border-emerald-500 shadow-lg shadow-emerald-500/20" : "bg-white/5 text-slate-500 border-border-dim hover:text-white"
-                              )}
-                            >
-                               {emailConfig.enabled ? 'Enabled' : 'Disabled'}
-                            </button>
-                         </div>
-
-                         {emailConfig.enabled && (
-                            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="space-y-6 lg:space-y-8 pt-2">
-                               <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-6">
-                                  <SimpleInput label="SMTP Host" value={emailConfig.smtpHost} onChange={v => setEmailConfig({...emailConfig, smtpHost: v})} placeholder="smtp.gmail.com" />
-                                  <SimpleInput label="SMTP Port" value={String(emailConfig.smtpPort)} onChange={v => setEmailConfig({...emailConfig, smtpPort: parseInt(v) || 0})} placeholder="587" />
-                               </div>
-                               <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-6">
-                                  <SimpleInput label="SMTP Username" value={emailConfig.smtpUser} onChange={v => setEmailConfig({...emailConfig, smtpUser: v})} placeholder="your-email@gmail.com" />
-                                  <SimpleInput isSensitive label="SMTP Password" value={emailConfig.smtpPass} onChange={v => setEmailConfig({...emailConfig, smtpPass: v})} placeholder="App Password" />
-                               </div>
-                               <SimpleInput label="Notify Recipient Email" value={emailConfig.notifyEmail} onChange={v => setEmailConfig({...emailConfig, notifyEmail: v})} placeholder="alerts@yourcompany.com" />
-                               
-                               <div className="flex flex-col lg:flex-row gap-4 pt-2">
-                                  <button onClick={handleSaveEmailSettings} disabled={isSavingEmail} className="flex-1 simple-btn btn-primary h-12 flex items-center justify-center gap-2">
-                                     {isSavingEmail ? 'Saving...' : <><CheckCircle weight="bold" size={16} /> Save Alerts</>}
-                                  </button>
-                                  <button onClick={handleTestEmail} disabled={isTestingEmail || !emailConfig.smtpHost} className="flex-1 simple-btn bg-white/5 border border-border-dim text-white hover:bg-white/10 h-12 flex items-center justify-center gap-2 transition-all">
-                                     {isTestingEmail ? 'Testing...' : <><PaperPlaneTilt size={16} weight="bold" /> Send Test Email</>}
-                                  </button>
-                               </div>
-                            </motion.div>
-                         )}
-                      </div>
-
-                       <div className="pt-8 border-t border-border-dim space-y-6">
-                          <div className="flex items-center gap-3">
-                             <div className="w-9 h-9 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-500"><ShieldCheck size={18} weight="bold" /></div>
-                                 <p className="text-xs font-medium text-slate-600">No records found for this section</p>
+                       <form className="space-y-6 lg:space-y-8" onSubmit={async e => {
+                          e.preventDefault();
+                          setIsLoading(prev => ({ ...prev, config: true })); setStatus('Saving...');
+                          try {
+                             const res = await fetchWithAuth(`${API_BASE}/api/config`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(config) });
+                             if (res.ok) { setIsConnected(true); setRevealCredentials(false); setStatus('Settings saved! Refreshing templates...'); await handleRefreshTemplates(); }
+                             else { const err = await res.json(); setStatus(`Error: ${err.error || 'Save failed'}`); }
+                          } catch (e) { setStatus('Could not save — is the server running?'); } finally { setIsLoading(prev => ({ ...prev, config: false })); }
+                       }}>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                             <SimpleInput isSensitive={!revealCredentials} label="Phone Number ID" value={config.PHONE_NUMBER_ID} onChange={v => setConfig({...config, PHONE_NUMBER_ID: v})} placeholder="From Meta Business Portal" />
+                             <SimpleInput isSensitive={!revealCredentials} label="WABA ID" value={config.WABA_ID} onChange={v => setConfig({...config, WABA_ID: v})} placeholder="From Meta Business Portal" />
                           </div>
-                          <div className="space-y-4 bg-white/[0.01] p-5 rounded-2xl border border-border-dim">
-                             <div className="space-y-2">
-                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">6-Digit PIN</label>
-                                <input type="text" maxLength={6} value={registrationPin} onChange={e => setRegistrationPin(e.target.value.replace(/\D/g, ''))} className="w-full bg-bg-surface border border-border-dim rounded-xl p-3 text-center text-xl font-mono tracking-[0.5em] text-white outline-none focus:border-amber-500/30 font-bold" placeholder="000000" />
+                          <div className="space-y-2 relative group">
+                             <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Access Token</label>
+                             <textarea value={config.ACCESS_TOKEN} onChange={e => setConfig({...config, ACCESS_TOKEN: e.target.value})} className={cn("w-full h-28 lg:h-32 bg-bg-surface border border-border-dim rounded-xl p-4 text-xs font-mono outline-none focus:border-emerald-500/30 resize-none transition-all", !revealCredentials ? "text-transparent select-none filter blur-[2px]" : "text-white")} placeholder="Paste your Meta Graph API access token..." />
+                             {!revealCredentials && config.ACCESS_TOKEN && (<div className="absolute inset-0 top-6 flex items-center justify-center pointer-events-none"><span className="text-[10px] font-bold text-slate-700 uppercase tracking-[0.5em] tracking-widest px-4 py-2 border border-dashed border-slate-800 rounded-lg">CREDENTIALS MASKED</span></div>)}
+                          </div>
+                          <button type="submit" disabled={isLoading.config} className="simple-btn btn-primary w-full h-12 lg:h-14 flex items-center justify-center gap-2">
+                             {isLoading.config ? 'Saving...' : <><CheckCircle weight="bold" size={18} /> Save Settings</>}
+                          </button>
+                       </form>
+                    </div>
+
+                    {/* 2. AUTOMATION & EMAIL ALERTS */}
+                    <div className="simple-card p-6 lg:p-10 space-y-8">
+                       <div className="flex items-center justify-between border-b border-white/5 pb-6">
+                          <div className="flex items-center gap-4">
+                             <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-500 border border-emerald-500/10">
+                                <Envelope size={22} weight="bold" />
                              </div>
-                             <button onClick={handleRegisterPhone} disabled={isRegistering || registrationPin.length !== 6} className="simple-btn bg-amber-500 text-black w-full h-12 font-bold flex items-center justify-center gap-2 shadow-lg shadow-amber-500/10 disabled:opacity-50">
-                                {isRegistering ? 'Registering...' : 'Complete Meta Registration'}
+                             <div>
+                                <h3 className="text-sm font-bold text-white uppercase tracking-widest">Notification Alerts</h3>
+                                <p className="text-[10px] text-slate-500 font-medium">SMTP settings for email campaign updates</p>
+                             </div>
+                          </div>
+                          <button 
+                             onClick={() => setEmailConfig({...emailConfig, enabled: !emailConfig.enabled})}
+                             className={cn(
+                               "flex items-center gap-2 px-4 py-2 rounded-lg border transition-all text-[10px] font-bold uppercase tracking-widest",
+                               emailConfig.enabled ? "bg-emerald-500 text-black border-emerald-500 shadow-lg shadow-emerald-500/10" : "bg-white/5 text-slate-500 border-border-dim"
+                             )}
+                          >
+                             {emailConfig.enabled ? 'Service Active' : 'Enable SMTP'}
+                          </button>
+                       </div>
+
+                       {emailConfig.enabled && (
+                          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 lg:space-y-8 pt-4">
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <SimpleInput label="SMTP Host" value={emailConfig.smtpHost} onChange={v => setEmailConfig({...emailConfig, smtpHost: v})} placeholder="smtp.gmail.com" />
+                                <SimpleInput label="SMTP Port" value={String(emailConfig.smtpPort)} onChange={v => setEmailConfig({...emailConfig, smtpPort: parseInt(v) || 0})} placeholder="587" />
+                             </div>
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <SimpleInput label="SMTP Username" value={emailConfig.smtpUser} onChange={v => setEmailConfig({...emailConfig, smtpUser: v})} placeholder="your-email@gmail.com" />
+                                <SimpleInput isSensitive label="SMTP Password" value={emailConfig.smtpPass} onChange={v => setEmailConfig({...emailConfig, smtpPass: v})} placeholder="App Password" />
+                             </div>
+                             <SimpleInput label="Global Recipient Email" value={emailConfig.notifyEmail} onChange={v => setEmailConfig({...emailConfig, notifyEmail: v})} placeholder="alerts@yourcompany.com" />
+                             
+                             <div className="flex flex-col sm:flex-row gap-4 pt-4">
+                                <button onClick={handleSaveEmailSettings} disabled={isSavingEmail} className="flex-1 simple-btn btn-primary h-12 flex items-center justify-center gap-2">
+                                   {isSavingEmail ? 'Saving...' : <><CheckCircle weight="bold" size={16} /> Save Alerts</>}
+                                </button>
+                                <button onClick={handleTestEmail} disabled={isTestingEmail || !emailConfig.smtpHost} className="flex-1 simple-btn bg-white/5 border border-border-dim text-white hover:bg-white/10 h-12 flex items-center justify-center gap-2 transition-all">
+                                   {isTestingEmail ? 'Testing...' : <><PaperPlaneTilt size={16} weight="bold" /> Send Test Email</>}
+                                </button>
+                             </div>
+                          </motion.div>
+                       )}
+                       {!emailConfig.enabled && (
+                          <div className="py-12 text-center opacity-30 select-none">
+                             <EnvelopeSimple size={48} className="mx-auto text-slate-800 mb-4" />
+                             <p className="text-[10px] font-bold text-slate-700 uppercase tracking-widest">SMTP Service Disabled</p>
+                          </div>
+                       )}
+                    </div>
+
+                    {/* 3. SECURITY & VERIFICATION */}
+                    <div className="simple-card p-6 lg:p-10 space-y-8">
+                       <div className="flex items-center justify-between border-b border-white/5 pb-6">
+                          <div className="flex items-center gap-4">
+                             <div className="w-10 h-10 rounded-2xl bg-amber-500/10 flex items-center justify-center text-amber-500 border border-amber-500/10">
+                                <ShieldCheck size={22} weight="bold" />
+                             </div>
+                             <div>
+                                <h3 className="text-sm font-bold text-white uppercase tracking-widest">Security & Verification</h3>
+                                <p className="text-[10px] text-slate-500 font-medium">Meta verification and registration</p>
+                             </div>
+                          </div>
+                       </div>
+                       
+                       <div className="bg-bg-base/30 p-6 rounded-2xl border border-border-dim space-y-6">
+                          <div className="space-y-4">
+                             <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Meta 6-Digit PIN</label>
+                                <input type="text" maxLength={6} value={registrationPin} onChange={e => setRegistrationPin(e.target.value.replace(/\D/g, ''))} className="w-full bg-bg-surface border border-border-dim rounded-xl p-4 text-center text-2xl font-mono tracking-[0.5em] text-white outline-none focus:border-amber-500/30 transition-all font-bold placeholder:text-slate-800" placeholder="000000" />
+                                <p className="text-[9px] text-slate-600 font-medium px-1">Required for Meta Cloud API phone registration.</p>
+                             </div>
+                             <button onClick={handleRegisterPhone} disabled={isRegistering || registrationPin.length !== 6} className="simple-btn bg-amber-500 hover:bg-amber-400 text-black w-full h-12 lg:h-14 font-bold flex items-center justify-center gap-2 shadow-lg shadow-amber-500/10 disabled:opacity-50 transition-all">
+                                {isRegistering ? 'Processing...' : <><ShieldCheck size={18} weight="bold" /> Complete Registration</>}
                              </button>
                           </div>
                        </div>
