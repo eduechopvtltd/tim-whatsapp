@@ -1410,22 +1410,26 @@ export default function App() {
                            {expandedHistoryJob.results ? (
                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
                                 {expandedHistoryJob.results.map((res, i) => (
-                                  <div key={i} onClick={() => setSelectedResult(res)} className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.01] hover:bg-white/[0.03] border border-border-dim/50 cursor-pointer transition-all group hover:scale-[1.01]">
-                                     <div className="flex items-center gap-4 min-w-0">
+                                  <div key={i} onClick={() => setSelectedResult(res)} className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.01] hover:bg-white/[0.03] border border-border-dim/50 cursor-pointer transition-all group hover:scale-[1.01] overflow-hidden">
+                                     <div className="flex items-center gap-4 flex-1 min-w-0">
                                         <div className={cn(
-                                          "w-2.5 h-2.5 rounded-full shadow-[0_0_8px_rgba(0,0,0,0.5)] group-hover:scale-110 transition-transform",
+                                          "w-2.5 h-2.5 rounded-full shadow-[0_0_8px_rgba(0,0,0,0.5)] shrink-0 group-hover:scale-110 transition-transform",
                                           res.status?.includes('Sent') ? "bg-emerald-500" : res.status?.includes('Skip') ? "bg-amber-500" : "bg-red-500"
                                         )} />
-                                        <div className="min-w-0">
-                                           <p className="text-[14px] font-bold text-white tracking-tight">{res.phone}</p>
+                                        <div className="min-w-0 flex-1">
+                                           <div className="flex items-baseline gap-2">
+                                              <p className="text-[14px] font-bold text-white tracking-tight">{res.phone}</p>
+                                              <span className={cn(
+                                                 "text-[9px] font-black uppercase tracking-widest truncate max-w-[120px] md:max-w-[180px]",
+                                                 res.status?.includes('Sent') ? "text-emerald-500/70" : "text-red-500/70"
+                                               )} title={res.status}>
+                                                 {res.status}
+                                              </span>
+                                           </div>
                                            <p className="text-[11px] text-slate-500 truncate">{res.name || 'Anonymous Contact'}</p>
                                         </div>
                                      </div>
-                                     <div className="flex items-center gap-4 shrink-0">
-                                        <span className={cn(
-                                           "text-[10px] font-black uppercase tracking-widest",
-                                           res.status?.includes('Sent') ? "text-emerald-500" : "text-slate-500"
-                                        )}>{res.status}</span>
+                                     <div className="flex items-center gap-3 shrink-0 ml-4">
                                         <div className="p-2 bg-white/5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
                                            <Eye size={16} className="text-emerald-500" />
                                         </div>
@@ -1541,10 +1545,10 @@ export default function App() {
                       </div>
 
                       {/* Search Bar */}
-                      <div className="p-2 border-b border-border-dim">
-                         <div className="relative">
-                            <MagnifyingGlass size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" />
-                            <input placeholder="Search or start new chat" className="w-full bg-white/[0.05] border-none rounded-lg pl-12 pr-4 py-2 text-xs font-medium text-white outline-none placeholder:text-slate-600 h-9" />
+                      <div className="px-4 py-2 border-b border-border-dim">
+                         <div className="relative group">
+                            <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-emerald-500 transition-colors" />
+                            <input placeholder="Search or start new chat" className="w-full bg-white/[0.04] border border-transparent rounded-xl pl-10 pr-4 py-2 text-[13px] font-medium text-white outline-none placeholder:text-slate-600 focus:bg-white/[0.06] focus:border-border-dim transition-all h-9" />
                          </div>
                       </div>
 
@@ -1560,24 +1564,24 @@ export default function App() {
                                   setChats(prev => prev.map(c => c.phone === chat.phone ? { ...c, unreadCount: 0 } : c));
                                }}
                                className={cn(
-                                  "w-full flex items-center gap-3 px-4 py-3 border-b border-border-dim/50 transition-all relative group",
-                                  activeChatPhone === chat.phone ? "bg-white/[0.05]" : "hover:bg-white/[0.02]"
+                                  "w-full flex items-center gap-4 px-4 py-3.5 border-b border-border-dim/50 transition-all relative group",
+                                  activeChatPhone === chat.phone ? "bg-white/[0.06] shadow-sm" : "hover:bg-white/[0.03]"
                                )}
                             >
-                               <div className="w-12 h-12 rounded-full bg-emerald-500/10 flex-shrink-0 flex items-center justify-center text-emerald-500 border border-emerald-500/10 font-bold overflow-hidden">
-                                  {(chat.name || chat.phone).charAt(0).toUpperCase()}
+                               <div className="w-11 h-11 rounded-full bg-emerald-500/10 flex-shrink-0 flex items-center justify-center text-emerald-500 border border-emerald-500/10 font-bold overflow-hidden shadow-inner uppercase">
+                                  {(chat.name || chat.phone).charAt(0)}
                                </div>
-                               <div className="flex-1 min-w-0 py-1">
-                                  <div className="flex justify-between items-center mb-0.5">
-                                     <span className="text-[14px] font-medium text-[#e9edef] truncate">{chat.name || chat.phone}</span>
-                                     {(chat.lastMessageAt || chat.updatedAt) && <span className={cn("text-[11px] font-medium", chat.unreadCount > 0 ? "text-emerald-500" : "text-slate-500")}>{new Date(chat.lastMessageAt || chat.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
+                               <div className="flex-1 min-w-0">
+                                  <div className="flex justify-between items-baseline mb-1">
+                                     <span className="text-[15.5px] font-semibold text-[#e9edef] truncate tracking-tight">{chat.name || chat.phone}</span>
+                                     {(chat.lastMessageAt || chat.updatedAt) && <span className={cn("text-[11px] font-bold uppercase tracking-wider", chat.unreadCount > 0 ? "text-emerald-500" : "text-slate-600")}>{new Date(chat.lastMessageAt || chat.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
                                   </div>
                                   <div className="flex items-center justify-between">
-                                     <p className="text-[13px] text-slate-500 truncate flex-1 pr-4">
-                                        {chat.messages?.[chat.messages.length - 1]?.from === 'me' && <Check size={14} className="inline mr-1 text-sky-400" />}
+                                     <p className="text-[13.5px] text-slate-500 truncate flex-1 pr-4 leading-normal">
+                                        {chat.messages?.[chat.messages.length - 1]?.from === 'me' && <Check size={14} className="inline mr-1.5 text-sky-400" />}
                                         {chat.messages?.[chat.messages.length - 1]?.text || 'No messages'}
                                      </p>
-                                     {chat.unreadCount > 0 && <span className="bg-emerald-500 text-black text-[10px] font-bold px-1.5 min-w-[19px] h-[19px] flex items-center justify-center rounded-full shadow-lg">{chat.unreadCount}</span>}
+                                     {chat.unreadCount > 0 && <span className="bg-emerald-500 text-black text-[9px] font-black px-1.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full shadow-lg shadow-emerald-500/20">{chat.unreadCount}</span>}
                                   </div>
                                </div>
                             </button>
