@@ -61,9 +61,22 @@ export default function App() {
   // ═══════════ AUTH STATE ═══════════
   const [token, setToken] = useState(localStorage.getItem('tim_token') || '');
   const [user, setUser] = useState(JSON.parse(localStorage.getItem('tim_user') || 'null'));
-  const [authView, setAuthView] = useState('login');
-  const [authForm, setAuthForm] = useState({ username: '', password: '' });
+  const [authView, setAuthView] = useState('login'); // login, signup, forgot, reset
+  const [authForm, setAuthForm] = useState({ username: '', password: '', email: '' });
   const [authError, setAuthError] = useState('');
+  const [resetToken, setResetToken] = useState(null);
+
+  // Check for reset token in URL on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tokenFromUrl = params.get('resetToken');
+    if (tokenFromUrl) {
+      setResetToken(tokenFromUrl);
+      setAuthView('reset');
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
 
   // ═══════════ APP STATE ═══════════
   const [file, setFile] = useState(null);
@@ -116,23 +129,43 @@ export default function App() {
   const handleAuth = async (e) => {
     e.preventDefault();
     setAuthError('');
-    const endpoint = authView === 'login' ? '/auth/login' : '/auth/register';
+    
+    let endpoint = '/auth/login';
+    let payload = { ...authForm };
+
+    if (authView === 'signup') endpoint = '/auth/register';
+    if (authView === 'forgot') {
+      endpoint = '/auth/forgot-password';
+      payload = { email: authForm.email };
+    }
+    if (authView === 'reset') {
+      endpoint = '/auth/reset-password';
+      payload = { token: resetToken, password: authForm.password };
+    }
+
     try {
       const res = await fetch(`${API_BASE}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(authForm)
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Authentication failed');
+      if (!res.ok) throw new Error(data.error || 'Request failed');
+
       if (authView === 'login') {
         setToken(data.token);
         setUser({ id: data.id, username: data.username });
         localStorage.setItem('tim_token', data.token);
         localStorage.setItem('tim_user', JSON.stringify({ id: data.id, username: data.username }));
-      } else {
+      } else if (authView === 'signup') {
         setAuthView('login');
         setAuthError('Account created! Please login.');
+      } else if (authView === 'forgot') {
+        setAuthError('Success: Check your email for the reset link.');
+      } else if (authView === 'reset') {
+        setAuthView('login');
+        setAuthError('Success: Password updated. You can now login.');
+        setResetToken(null);
       }
     } catch (err) {
       setAuthError(err.message);
@@ -725,22 +758,56 @@ export default function App() {
             <h1 className="text-2xl font-bold text-white">TIM Cloud</h1>
             <p className="text-xs text-slate-500 mt-1 uppercase tracking-widest font-bold">Professional WhatsApp CRM</p>
           </div>
+
           <form onSubmit={handleAuth} className="space-y-4">
-            <SimpleInput label="Username" value={authForm.username} onChange={v => setAuthForm({...authForm, username: v})} placeholder="Enter your username" />
-            <SimpleInput label="Password" value={authForm.password} onChange={v => setAuthForm({...authForm, password: v})} placeholder="••••••••" isSensitive={true} />
+            {(authView === 'login' || authView === 'signup') && (
+              <SimpleInput label="Username" value={authForm.username} onChange={v => setAuthForm({...authForm, username: v})} placeholder="Enter your username" />
+            )}
+            
+            {(authView === 'signup' || authView === 'forgot') && (
+              <SimpleInput label="Email Address" value={authForm.email} onChange={v => setAuthForm({...authForm, email: v})} placeholder="name@company.com" />
+            )}
+
+            {(authView === 'login' || authView === 'signup' || authView === 'reset') && (
+              <div className="space-y-1">
+                <SimpleInput label={authView === 'reset' ? 'New Password' : 'Password'} value={authForm.password} onChange={v => setAuthForm({...authForm, password: v})} placeholder="••••••••" isSensitive={true} />
+                {authView === 'login' && (
+                  <div className="flex justify-end">
+                    <button type="button" onClick={() => { setAuthView('forgot'); setAuthError(''); }} className="text-[10px] font-bold text-slate-500 hover:text-emerald-500 transition-colors uppercase tracking-widest">Forgot Password?</button>
+                  </div>
+                )}
+              </div>
+            )}
+
             {authError && (
-              <div className={`p-3 rounded-xl text-xs text-center font-bold ${authError.includes('created') ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-500' : 'bg-red-500/10 border border-red-500/20 text-red-500'}`}>
+              <div className={cn(
+                "p-3 rounded-xl text-xs text-center font-bold",
+                authError.toLowerCase().includes('success') || authError.toLowerCase().includes('created') 
+                  ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-500' 
+                  : 'bg-red-500/10 border border-red-500/20 text-red-500'
+              )}>
                 {authError}
               </div>
             )}
-            <button type="submit" className="simple-btn btn-primary w-full h-12 flex items-center justify-center gap-2 font-bold">
-              {authView === 'login' ? 'Sign In' : 'Create Account'}
+
+            <button type="submit" className="simple-btn btn-primary w-full h-12 flex items-center justify-center gap-2 font-bold uppercase tracking-widest text-[11px]">
+              {authView === 'login' && 'Sign In'}
+              {authView === 'signup' && 'Create Account'}
+              {authView === 'forgot' && 'Send Reset Link'}
+              {authView === 'reset' && 'Update Password'}
             </button>
           </form>
-          <div className="text-center">
-            <button onClick={() => { setAuthView(authView === 'login' ? 'signup' : 'login'); setAuthError(''); }} className="text-slate-500 hover:text-white text-xs transition-colors font-bold">
-              {authView === 'login' ? "Don't have an account? Sign Up" : "Already have an account? Sign In"}
-            </button>
+
+          <div className="text-center space-y-3">
+            {authView === 'forgot' || authView === 'reset' ? (
+              <button onClick={() => { setAuthView('login'); setAuthError(''); }} className="text-slate-500 hover:text-white text-xs transition-colors font-bold">
+                 Back to Sign In
+              </button>
+            ) : (
+              <button onClick={() => { setAuthView(authView === 'login' ? 'signup' : 'login'); setAuthError(''); }} className="text-slate-500 hover:text-white text-xs transition-colors font-bold">
+                {authView === 'login' ? "Don't have an account? Sign Up" : "Already have an account? Sign In"}
+              </button>
+            )}
           </div>
         </motion.div>
       </div>

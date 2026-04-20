@@ -17,6 +17,7 @@ const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
 const jwt = require('jsonwebtoken');
 const { User, Chat, Campaign, GlobalState, WamidMapping } = require('./db/models');
+const crypto = require('crypto');
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_for_dev_only';
 
 const app = express();
@@ -138,14 +139,14 @@ const authenticateToken = (req, res, next) => {
 // Registration
 app.post('/auth/register', async (req, res) => {
   try {
-    const { username, password } = req.body;
-    if (!username || !password) return res.status(400).json({ error: 'Username and password are required' });
+    const { username, password, email } = req.body;
+    if (!username || !password || !email) return res.status(400).json({ error: 'Username, password, and email are required' });
 
-    const existingUser = await User.findOne({ username });
-    if (existingUser) return res.status(400).json({ error: 'Username already exists' });
+    const existingUser = await User.findOne({ $or: [{ username }, { email }] });
+    if (existingUser) return res.status(400).json({ error: 'Username or email already exists' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const newUser = new User({ username, password: hashedPassword });
+    const newUser = new User({ username, password: hashedPassword, email });
     await newUser.save();
 
     res.status(201).json({ message: 'User registered successfully' });
@@ -177,6 +178,76 @@ app.post('/auth/login', async (req, res) => {
     console.error('[AUTH] Login error:', err);
     res.status(500).json({ error: 'Server error during login' });
   }
+});
+
+// Forgot Password - Generate Token
+app.post('/auth/forgot-password', async (req, res) => {
+    try {
+        const { email } = req.body;
+        if (!email) return res.status(400).json({ error: 'Email is required' });
+
+        const user = await User.findOne({ email });
+        if (!user) return res.status(404).json({ error: 'No account found with that email' });
+
+        // Generate 20-character hex token
+        const token = crypto.randomBytes(20).toString('hex');
+        user.resetPasswordToken = token;
+        user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
+        await user.save();
+
+        const resetUrl = `${req.headers.origin || 'http://localhost:3000'}/?resetToken=${token}`;
+        
+        const html = `
+            <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px; max-width: 500px; margin: auto;">
+                <h2 style="color: #10b981; text-align: center;">Password Reset Request</h2>
+                <p>Hello,</p>
+                <p>You are receiving this because you (or someone else) have requested the reset of the password for your TIM Cloud account.</p>
+                <p style="text-align: center; margin: 30px 0;">
+                    <a href="${resetUrl}" style="background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 14px;">Reset Password</a>
+                </p>
+                <p>If you did not request this, please ignore this email and your password will remain unchanged.</p>
+                <p style="font-size: 12px; color: #666; border-top: 1px solid #eee; margin-top: 20px; padding-top: 20px;">
+                    Note: This link will expire in 1 hour.
+                </p>
+            </div>
+        `;
+
+        const sent = await sendSystemEmail(user.email, 'TIM Cloud Password Reset', html);
+        if (sent) {
+            res.json({ message: 'Reset email sent successfully' });
+        } else {
+            res.status(500).json({ error: 'Failed to send recovery email. Please contact support.' });
+        }
+    } catch (err) {
+        console.error('[AUTH] Forgot password error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// Reset Password - Apply new password
+app.post('/auth/reset-password', async (req, res) => {
+    try {
+        const { token, password } = req.body;
+        if (!token || !password) return res.status(400).json({ error: 'Token and new password are required' });
+
+        const user = await User.findOne({
+            resetPasswordToken: token,
+            resetPasswordExpires: { $gt: Date.now() }
+        });
+
+        if (!user) return res.status(400).json({ error: 'Password reset token is invalid or has expired' });
+
+        // Update password and clear token
+        user.password = await bcrypt.hash(password, 10);
+        user.resetPasswordToken = undefined;
+        user.resetPasswordExpires = undefined;
+        await user.save();
+
+        res.json({ message: 'Password has been reset successfully' });
+    } catch (err) {
+        console.error('[AUTH] Reset password error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
 });
 
 // ═══════════════════ MODULAR ENGINE HELPERS ═══════════════════
@@ -225,6 +296,41 @@ async function sendEmailNotification(userId, msgDetails) {
   } catch (err) {
     console.error(`[EMAIL ERROR] Failed to send notification:`, err.message);
   }
+}
+
+// System-wide email sender (used for password reset)
+async function sendSystemEmail(to, subject, html) {
+    try {
+        const host = process.env.SYSTEM_SMTP_HOST;
+        const port = Number(process.env.SYSTEM_SMTP_PORT) || 587;
+        const user = process.env.SYSTEM_SMTP_USER;
+        const pass = process.env.SYSTEM_SMTP_PASS;
+
+        if (!host || !user || !pass) {
+            console.error('[SYSTEM EMAIL] Missing credentials in .env. Cannot send email.');
+            return false;
+        }
+
+        const transporter = nodemailer.createTransport({
+            host,
+            port,
+            secure: port === 465,
+            auth: { user, pass }
+        });
+
+        await transporter.sendMail({
+            from: `"TIM Cloud Support" <${user}>`,
+            to,
+            subject,
+            html
+        });
+
+        console.log(`[SYSTEM EMAIL] Sent: ${subject} to ${to}`);
+        return true;
+    } catch (err) {
+        console.error('[SYSTEM EMAIL ERROR]', err.message);
+        return false;
+    }
 }
 
 // --- RENDER KEEP-ALIVE (No-Doze) ---
