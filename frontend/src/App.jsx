@@ -1533,22 +1533,22 @@ export default function App() {
                       activeChatPhone ? "hidden lg:flex" : "flex"
                    )}>
                       {/* Sidebar Header */}
-                      <div className="h-16 px-4 flex items-center justify-between border-b border-border-dim bg-white/[0.02]">
-                         <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center text-slate-500 overflow-hidden border border-white/5">
-                            <User size={24} weight="fill" />
+                      <div className="h-[70px] px-4 flex items-center justify-between border-b border-border-dim bg-white/[0.02]">
+                         <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 overflow-hidden border border-white/5 shadow-inner">
+                            <User size={22} weight="fill" />
                          </div>
-                         <div className="flex items-center gap-1">
-                            <button className="p-2 text-slate-500 hover:text-emerald-500 hover:bg-white/5 rounded-full transition-all"><CircleDashed size={20} /></button>
-                            <button className="p-2 text-slate-500 hover:text-emerald-500 hover:bg-white/5 rounded-full transition-all"><ChatCenteredDots size={20} /></button>
-                            <button className="p-2 text-slate-500 hover:text-emerald-500 hover:bg-white/5 rounded-full transition-all"><DotsThreeVertical size={20} weight="bold" /></button>
+                         <div className="flex items-center gap-0.5">
+                            <button className="p-2.5 text-slate-500 hover:text-emerald-500 hover:bg-white/5 rounded-full transition-all"><CircleDashed size={20} /></button>
+                            <button className="p-2.5 text-slate-500 hover:text-emerald-500 hover:bg-white/5 rounded-full transition-all"><ChatCenteredDots size={20} /></button>
+                            <button className="p-2.5 text-slate-500 hover:text-emerald-500 hover:bg-white/5 rounded-full transition-all"><DotsThreeVertical size={20} weight="bold" /></button>
                          </div>
                       </div>
 
                       {/* Search Bar */}
-                      <div className="px-4 py-2 border-b border-border-dim">
+                      <div className="px-4 py-2.5 border-b border-border-dim">
                          <div className="relative group">
-                            <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-emerald-500 transition-colors" />
-                            <input placeholder="Search or start new chat" className="w-full bg-white/[0.04] border border-transparent rounded-xl pl-10 pr-4 py-2 text-[13px] font-medium text-white outline-none placeholder:text-slate-600 focus:bg-white/[0.06] focus:border-border-dim transition-all h-9" />
+                            <MagnifyingGlass size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-emerald-500 transition-colors" />
+                            <input placeholder="Search or start new chat" className="w-full bg-white/[0.04] border border-transparent rounded-xl pl-11 pr-4 py-2 text-[13px] font-medium text-white outline-none placeholder:text-slate-600 focus:bg-white/[0.06] focus:border-border-dim transition-all h-9" />
                          </div>
                       </div>
 
@@ -1564,20 +1564,20 @@ export default function App() {
                                   setChats(prev => prev.map(c => c.phone === chat.phone ? { ...c, unreadCount: 0 } : c));
                                }}
                                className={cn(
-                                  "w-full flex items-center gap-4 px-4 py-3.5 border-b border-border-dim/50 transition-all relative group",
-                                  activeChatPhone === chat.phone ? "bg-white/[0.06] shadow-sm" : "hover:bg-white/[0.03]"
+                                  "w-full flex items-center gap-4 px-4 py-3 border-b border-border-dim/30 transition-all relative group",
+                                  activeChatPhone === chat.phone ? "bg-white/[0.07] shadow-sm" : "hover:bg-white/[0.03]"
                                )}
                             >
-                               <div className="w-11 h-11 rounded-full bg-emerald-500/10 flex-shrink-0 flex items-center justify-center text-emerald-500 border border-emerald-500/10 font-bold overflow-hidden shadow-inner uppercase">
+                               <div className="w-12 h-12 rounded-full bg-emerald-500/10 flex-shrink-0 flex items-center justify-center text-emerald-500 border border-emerald-500/10 font-bold overflow-hidden shadow-inner uppercase text-lg">
                                   {(chat.name || chat.phone).charAt(0)}
                                </div>
-                               <div className="flex-1 min-w-0">
-                                  <div className="flex justify-between items-baseline mb-1">
+                               <div className="flex-1 min-w-0 h-12 flex flex-col justify-center">
+                                  <div className="flex justify-between items-baseline mb-0.5">
                                      <span className="text-[15.5px] font-semibold text-[#e9edef] truncate tracking-tight">{chat.name || chat.phone}</span>
                                      {(chat.lastMessageAt || chat.updatedAt) && <span className={cn("text-[11px] font-bold uppercase tracking-wider", chat.unreadCount > 0 ? "text-emerald-500" : "text-slate-600")}>{new Date(chat.lastMessageAt || chat.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
                                   </div>
                                   <div className="flex items-center justify-between">
-                                     <p className="text-[13.5px] text-slate-500 truncate flex-1 pr-4 leading-normal">
+                                     <p className="text-[13.5px] text-slate-500 truncate flex-1 pr-4 leading-snug">
                                         {chat.messages?.[chat.messages.length - 1]?.from === 'me' && <Check size={14} className="inline mr-1.5 text-sky-400" />}
                                         {chat.messages?.[chat.messages.length - 1]?.text || 'No messages'}
                                      </p>
