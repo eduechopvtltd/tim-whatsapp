@@ -978,7 +978,7 @@ export default function App() {
 
               {/* ═══ SEND TAB ═══ */}
               {activeTab === 'send' && (
-                 <motion.div key="send" {...PAGE_TRANSITION} className="max-w-6xl mx-auto flex flex-col md:flex-row gap-8 pb-20">
+                 <motion.div key="send" {...PAGE_TRANSITION} className="max-w-6xl mx-auto flex flex-col md:flex-row gap-8 pb-20 items-start">
                    {/* LEFT COLUMN: CONFIGURATION */}
                    <div className="flex-1 space-y-6 lg:space-y-8 min-w-0">
                       
@@ -999,7 +999,7 @@ export default function App() {
                                      <p className="text-[9px] text-emerald-500 font-bold uppercase mt-0.5">{csvData.length} Contacts Found</p>
                                   </div>
                                ) : (
-                                 <p className="text-[10px] text-slate-700 mt-2">Full delivery details available in backend logs</p>
+                                  <div className="text-center"><Plus size={18} className="text-slate-600 mb-1 mx-auto" weight="bold" /><p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Click to Upload CSV</p></div>
                                )}
                             </div>
                             <input key={fileKey} type="file" accept=".csv" className="hidden" onChange={handleFileUpload} />
@@ -1156,23 +1156,22 @@ export default function App() {
                    </div>
 
                    {/* RIGHT COLUMN: PREVIEW (STICKY) */}
-                    <div className="w-full lg:w-[350px] shrink-0 flex flex-col items-center lg:items-stretch pt-1.5 min-h-full relative">
-                       <div className="sticky top-24 space-y-4 w-full max-w-[350px] self-start">
-                         <div className="flex items-center justify-between px-2">
-                            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Live Preview</h3>
-                            <div className="flex items-center gap-2">
-                               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                               <span className="text-[10px] font-bold text-emerald-500/60 uppercase">High Fidelity</span>
-                            </div>
-                         </div>
-                         <TemplatePreview 
-                           template={selectedTpl} 
-                           mapping={mapping} 
-                           csvHeaders={csvHeaders} 
-                           uploadedMediaId={uploadedMediaId}
-                           localMediaUrl={localMediaUrl}
-                         />
-                         {selectedTpl && (
+                    <div className="w-full lg:w-[350px] shrink-0 sticky top-24 space-y-4 z-10 pt-1.5">
+                       <div className="flex items-center justify-between px-2">
+                          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Live Preview</h3>
+                          <div className="flex items-center gap-2">
+                             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                             <span className="text-[10px] font-bold text-emerald-500/60 uppercase">High Fidelity</span>
+                          </div>
+                       </div>
+                       <TemplatePreview 
+                         template={selectedTpl} 
+                         mapping={mapping} 
+                         csvHeaders={csvHeaders} 
+                         uploadedMediaId={uploadedMediaId}
+                         localMediaUrl={localMediaUrl}
+                       />
+                       {selectedTpl && (
                            <div className="p-4 rounded-2xl bg-white/[0.01] border border-border-dim">
                               <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 text-center">Template Details</p>
                               <div className="grid grid-cols-2 gap-2 text-[9px] font-bold">
@@ -1586,7 +1585,7 @@ export default function App() {
                                </div>
                             </button>
                          )) : (
-                                 <p className="text-[10px] text-slate-700 mt-2">Full delivery details available in backend logs</p>
+                             <div class="p-8 text-center opacity-40"><ChatTeardropDots size={40} className="mx-auto mb-3 text-slate-700" weight="fill" /><p className="text-[13px] text-slate-500">No conversations found</p></div>
                          )}
                       </div>
                    </div>
@@ -1731,7 +1730,7 @@ export default function App() {
                       <div className="section-header !mb-8">
                           <div className="flex items-center gap-3 lg:gap-4 flex-1">
                              <div className="step-number"><Gear size={18} weight="bold" /></div>
-                                 <p className="text-[10px] text-slate-700 mt-2">Full delivery details available in backend logs</p>
+                                 <p className="text-xs font-medium text-slate-600">No records found for this section</p>
                           </div>
                           <button type="button" onClick={() => setRevealCredentials(!revealCredentials)} className={cn("flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all text-[10px] font-bold uppercase tracking-widest", revealCredentials ? "bg-amber-500/10 text-amber-500 border-amber-500/20" : "bg-white/5 text-slate-400 border-border-dim hover:text-white")}>
                              {revealCredentials ? <><EyeSlash size={14} weight="bold" /> Mask</> : <><Eye size={14} weight="bold" /> Reveal</>}
@@ -1765,7 +1764,7 @@ export default function App() {
                          <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3 lg:gap-4">
                                <div className="w-9 h-9 lg:w-10 lg:h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500"><Envelope size={18} weight="bold" /></div>
-                                 <p className="text-[10px] text-slate-700 mt-2">Full delivery details available in backend logs</p>
+                                 <p className="text-xs font-medium text-slate-600">No records found for this section</p>
                             </div>
                             <button 
                               onClick={() => setEmailConfig({...emailConfig, enabled: !emailConfig.enabled})}
@@ -1805,7 +1804,7 @@ export default function App() {
                        <div className="pt-8 border-t border-border-dim space-y-6">
                           <div className="flex items-center gap-3">
                              <div className="w-9 h-9 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-500"><ShieldCheck size={18} weight="bold" /></div>
-                                 <p className="text-[10px] text-slate-700 mt-2">Full delivery details available in backend logs</p>
+                                 <p className="text-xs font-medium text-slate-600">No records found for this section</p>
                           </div>
                           <div className="space-y-4 bg-white/[0.01] p-5 rounded-2xl border border-border-dim">
                              <div className="space-y-2">
