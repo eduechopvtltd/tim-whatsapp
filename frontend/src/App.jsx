@@ -116,6 +116,7 @@ export default function App() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [historySearchTerm, setHistorySearchTerm] = useState('');
   const [debouncedHistorySearch, setDebouncedHistorySearch] = useState('');
+  const [historyStatusFilter, setHistoryStatusFilter] = useState('All');
   const [revealCredentials, setRevealCredentials] = useState(false);
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [uploadedMediaId, setUploadedMediaId] = useState(null);
@@ -467,12 +468,19 @@ export default function App() {
 
   const filteredHistory = useMemo(() => {
     if (!historyData) return [];
-    if (!debouncedHistorySearch) return historyData;
-    return historyData.filter(job => 
+    let items = historyData;
+    
+    // Status Filter
+    if (historyStatusFilter !== 'All') {
+      items = items.filter(job => (job.status || 'Completed') === historyStatusFilter);
+    }
+
+    if (!debouncedHistorySearch) return items;
+    return items.filter(job => 
       (job.name || job.templateName || '').toLowerCase().includes(debouncedHistorySearch.toLowerCase()) ||
-      String(job.id || '').includes(debouncedHistorySearch)
+      String(job.id || job._id || '').includes(debouncedHistorySearch)
     );
-  }, [historyData, debouncedHistorySearch]);
+  }, [historyData, debouncedHistorySearch, historyStatusFilter]);
 
   const sortedChats = useMemo(() => {
     return [...chats].sort((a, b) => {
@@ -492,12 +500,21 @@ export default function App() {
   useEffect(() => { const t = setTimeout(() => setDebouncedSearch(searchTerm), 300); return () => clearTimeout(t); }, [searchTerm]);
   useEffect(() => { const t = setTimeout(() => setDebouncedHistorySearch(historySearchTerm), 300); return () => clearTimeout(t); }, [historySearchTerm]);
 
-  // INSTANT JUMP TO BOTTOM
+  // INSTANT JUMP TO BOTTOM - OPTIMIZED
   useEffect(() => {
-    if (activeChatHistory.length > 0) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+    if (activeChatPhone && activeChatHistory.length > 0) {
+      // Use direct manipulation for maximum speed
+      const scrollContainer = document.querySelector('.inbox-scroll-container');
+      if (scrollContainer) {
+        scrollContainer.scrollTop = scrollContainer.scrollHeight;
+      }
+      
+      // Fallback to scrollIntoView for safety (next tick)
+      const timer = setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+      });
     }
-  }, [activeChatHistory]);
+  }, [activeChatHistory, activeChatPhone]);
 
   // FETCH CAMPAIGN DETAILS
   const handleExpandHistory = async (job) => {
@@ -965,15 +982,14 @@ export default function App() {
                    {/* LEFT COLUMN: CONFIGURATION */}
                    <div className="flex-1 space-y-6 lg:space-y-8 min-w-0">
                       
-                      {/* 1. UPLOAD CONTACTS */}
-                       <div className="simple-card space-y-4 lg:space-y-5">
-                          <div className="section-header !pb-4 !mb-4">
-                             <div className="step-number">1</div>
-                             <div>
-                                <h3 className="text-base lg:text-lg font-bold">Upload Contacts</h3>
-                                <p className="text-[10px] lg:text-xs text-slate-500">Pick a CSV file with your contacts.</p>
-                             </div>
-                          </div>
+                       {/* 1. UPLOAD CONTACTS */}
+                        <div className="simple-card space-y-4 lg:space-y-5">
+                           <div className="flex items-center gap-4 border-b border-border-dim pb-4 mb-4">
+                              <div>
+                                 <h3 className="text-base lg:text-lg font-bold">Upload Contacts</h3>
+                                 <p className="text-[10px] lg:text-xs text-slate-500">Pick a CSV file with your contacts.</p>
+                              </div>
+                           </div>
                          <label className="block group cursor-pointer">
                             <div className={cn("rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 transition-all", file ? "h-24 border-emerald-500/30 bg-emerald-500/5" : "h-32 border-border-dim bg-white/[0.01] hover:border-emerald-500/20")}>
                                {file ? (
@@ -998,8 +1014,7 @@ export default function App() {
 
                       {/* 2. CHOOSE MESSAGE */}
                        <div className="simple-card space-y-4 lg:space-y-5">
-                          <div className="section-header !pb-4 !mb-4">
-                             <div className="step-number">2</div>
+                          <div className="flex items-center gap-4 border-b border-border-dim pb-4 mb-4">
                              <div className="flex-1">
                                 <h3 className="text-base lg:text-lg font-bold">Choose Message</h3>
                                 <p className="text-[10px] lg:text-xs text-slate-500">Pick a template or write a custom message.</p>
@@ -1142,7 +1157,7 @@ export default function App() {
 
                    {/* RIGHT COLUMN: PREVIEW (STICKY) */}
                     <div className="w-full lg:w-[350px] shrink-0 flex flex-col items-center lg:items-stretch">
-                       <div className="relative lg:sticky lg:top-24 space-y-4 w-full max-w-[350px]">
+                       <div className="sticky top-20 lg:top-24 space-y-4 w-full max-w-[350px] self-start">
                          <div className="flex items-center justify-between px-2">
                             <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Live Preview</h3>
                             <div className="flex items-center gap-2">
@@ -1254,98 +1269,252 @@ export default function App() {
 
               {/* ═══ HISTORY TAB ═══ */}
               {activeTab === 'history' && (
-                <motion.div key="history" {...PAGE_TRANSITION} className="space-y-6 max-w-6xl pb-20">
-                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 px-1">
-                      <div className="flex items-center gap-3">
+                <motion.div key="history" {...PAGE_TRANSITION} className="space-y-8 max-w-6xl pb-20">
+                   
+                   {/* 1. GLOBAL SUMMARY BAR (Visible only on list view) */}
+                   {!expandedHistoryJob && (
+                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-6">
+                        <div className="simple-card flex items-center gap-5 group hover:border-emerald-500/10 transition-all">
+                           <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-500 border border-emerald-500/10 group-hover:scale-110 transition-transform">
+                              <ChartLine size={24} weight="bold" />
+                           </div>
+                           <div>
+                              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Total Campaigns</p>
+                              <p className="text-2xl font-bold text-white">{stats.totalCampaigns}</p>
+                           </div>
+                        </div>
+                        <div className="simple-card flex items-center gap-5 group hover:border-emerald-500/10 transition-all">
+                           <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-500 border border-emerald-500/10 group-hover:scale-110 transition-transform">
+                              <PaperPlaneTilt size={24} weight="bold" />
+                           </div>
+                           <div>
+                              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Messages Sent</p>
+                              <p className="text-2xl font-bold text-white">{stats.totalSent}</p>
+                           </div>
+                        </div>
+                        <div className="simple-card flex items-center gap-5 group hover:border-emerald-500/10 transition-all">
+                           <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-500 border border-emerald-500/10 group-hover:scale-110 transition-transform">
+                              <CheckCircle size={24} weight="bold" />
+                           </div>
+                           <div>
+                              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Success Rate</p>
+                              <p className="text-2xl font-bold text-white">
+                                {stats.totalSent > 0 ? ((stats.totalSent / (stats.totalSent + stats.totalFailed)) * 100).toFixed(1) : '0'}%
+                              </p>
+                           </div>
+                        </div>
+                     </div>
+                   )}
+
+                   {/* 2. HEADER: TITLE & SEARCH/FILTER */}
+                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 px-1">
+                      <div className="flex items-center gap-4">
                         {expandedHistoryJob && (
-                          <button onClick={() => setExpandedHistoryJob(null)} className="flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-all border border-border-dim hover:border-emerald-500/20 group">
-                            <ArrowLeft size={16} weight="bold" className="group-hover:-translate-x-0.5 transition-transform" />
-                            <span className="text-[10px] font-bold uppercase tracking-widest">Back to Campaigns</span>
+                          <button onClick={() => setExpandedHistoryJob(null)} className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 rounded-xl text-slate-400 hover:text-white transition-all border border-border-dim hover:border-emerald-500/20 group shadow-lg">
+                            <ArrowLeft size={18} weight="bold" className="group-hover:-translate-x-1 transition-transform" />
+                            <span className="text-xs font-bold uppercase tracking-widest">Back to Dashboard</span>
                           </button>
                         )}
-                        {!expandedHistoryJob && <h3 className="text-lg lg:text-xl font-bold">Past Campaigns</h3>}
+                        <h3 className="text-xl lg:text-2xl font-bold tracking-tight">
+                          {expandedHistoryJob ? 'Campaign Analytics' : 'Campaign History'}
+                        </h3>
                       </div>
-                      <div className="flex items-center gap-3 w-full sm:w-auto">
-                        {!expandedHistoryJob && (
-                          <div className="relative flex-1 sm:w-64">
-                             <MagnifyingGlass size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" />
-                             <input value={historySearchTerm} onChange={e => setHistorySearchTerm(e.target.value)} placeholder="Search history..." className="w-full bg-white/[0.02] border border-border-dim rounded-lg pl-9 pr-3 py-2 text-[10px] font-bold text-white outline-none focus:border-emerald-500/20" />
+                      
+                      {!expandedHistoryJob && (
+                        <div className="flex flex-col md:flex-row items-center gap-3 w-full sm:w-auto">
+                           <div className="flex items-center p-1 bg-white/[0.02] border border-border-dim rounded-xl">
+                              {['All', 'Running', 'Completed', 'Stopped'].map(status => (
+                                 <button
+                                    key={status}
+                                    onClick={() => setHistoryStatusFilter(status)}
+                                    className={cn(
+                                       "px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all",
+                                       historyStatusFilter === status 
+                                          ? "bg-emerald-500 text-black shadow-lg shadow-emerald-500/10" 
+                                          : "text-slate-500 hover:text-slate-300"
+                                    )}
+                                 >
+                                    {status === 'All' ? 'All Campaigns' : status}
+                                 </button>
+                              ))}
+                           </div>
+                           <div className="relative flex-1 sm:w-64 group">
+                             <MagnifyingGlass size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-emerald-500 transition-colors" />
+                             <input value={historySearchTerm} onChange={e => setHistorySearchTerm(e.target.value)} placeholder="Search by ID or name..." className="w-full bg-white/[0.04] border border-border-dim rounded-xl pl-11 pr-4 py-2.5 text-xs font-bold text-white outline-none focus:border-emerald-500/20 shadow-inner" />
                           </div>
-                        )}
-                        {historyData.length > 0 && !expandedHistoryJob && (
-                          <button onClick={() => { if(confirm('Wipe all history?')) fetchWithAuth(`${API_BASE}/api/history/clear`, { method: 'POST' }).then(() => setHistoryData([])) }} className="text-[10px] font-bold text-red-500/50 hover:text-red-500 uppercase tracking-widest whitespace-nowrap">Clear All</button>
-                        )}
-                      </div>
+                          {historyData.length > 0 && (
+                            <button onClick={() => { if(confirm('Wipe all history? This action is irreversible.')) fetchWithAuth(`${API_BASE}/api/history/clear`, { method: 'POST' }).then(() => setHistoryData([])) }} className="p-3 bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 rounded-xl text-red-500 transition-all group" title="Clear All History">
+                               <Square size={18} weight="bold" className="group-hover:rotate-90 transition-transform" />
+                            </button>
+                          )}
+                        </div>
+                      )}
                    </div>
 
+                   {/* 3. CONTENT AREA */}
                    {expandedHistoryJob ? (
-                     <div className="space-y-6">
-                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                           <MiniStat label="Total Contacts" value={expandedHistoryJob.totalContacts || expandedHistoryJob.total || 0} />
-                           <MiniStat label="Sent Success" value={expandedHistoryJob.sent || expandedHistoryJob.results?.filter(r => r.status?.includes('Sent')).length || 0} color="text-emerald-500" />
-                           <MiniStat label="Failed" value={expandedHistoryJob.failed || expandedHistoryJob.results?.filter(r => r.status?.includes('Failed')).length || 0} color="text-red-500" />
-                           <MiniStat label="Status" value={expandedHistoryJob.status || 'Completed'} />
-                        </div>
-                        <div className="simple-card">
-                          <div className="flex justify-between items-center mb-6">
-                             <div>
-                                <h4 className="text-xs font-bold text-white uppercase tracking-widest">{expandedHistoryJob.name || expandedHistoryJob.templateName || 'Campaign'}</h4>
-                                <p className="text-[10px] text-slate-500 mt-1">{new Date(expandedHistoryJob.timestamp || expandedHistoryJob.createdAt).toLocaleString()}</p>
-                             </div>
-                             {expandedHistoryJob.results && <button onClick={() => handleExportHistoryCSV(expandedHistoryJob)} className="simple-btn bg-white/5 border border-border-dim text-slate-300 hover:text-emerald-500 flex items-center gap-2 text-[10px] px-4"><DownloadSimple size={14} /> Export CSV</button>}
-                          </div>
-                          {expandedHistoryJob.results ? (
-                            <div className="space-y-1.5 max-h-[60vh] overflow-y-auto pr-1">
-                               {expandedHistoryJob.results.map((res, i) => (
-                                 <div key={i} onClick={() => setSelectedResult(res)} className="flex items-center justify-between p-2.5 rounded-xl bg-white/[0.01] border border-border-dim text-[10px] cursor-pointer hover:bg-white/[0.03] group">
-                                    <div className="flex items-center gap-3 min-w-0">
-                                       <div className={cn("w-1.5 h-1.5 rounded-full shrink-0", res.status?.includes('Sent') ? "bg-emerald-500" : res.status?.includes('Skip') ? "bg-amber-500" : "bg-red-500")} />
-                                       <span className="text-white font-bold">{res.phone}</span>
-                                       <span className="text-slate-600 truncate">{res.name}</span>
+                     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        {/* Analytics Header Card */}
+                        <div className="simple-card border-emerald-500/5 !bg-gradient-to-br from-bg-surface to-bg-base">
+                           <div className="flex flex-col md:flex-row justify-between gap-6 mb-8">
+                              <div className="space-y-2">
+                                 <div className="flex items-center gap-3">
+                                    <div className="px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-[9px] font-black uppercase tracking-widest leading-normal">
+                                       {expandedHistoryJob.templateName || 'Custom Message'}
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                       <span className={cn(res.status?.includes('Sent') ? "text-emerald-500" : "text-slate-500")}>{res.status}</span>
-                                       <Eye size={14} className="text-slate-700 group-hover:text-emerald-500" />
-                                    </div>
+                                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">ID: #{String(expandedHistoryJob.id || expandedHistoryJob._id || '').slice(-8)}</span>
                                  </div>
-                               ))}
-                            </div>
-                          ) : (
-                            <p className="text-xs text-slate-500 text-center py-10">Detailed results not available for this campaign.</p>
-                          )}
+                                 <h4 className="text-2xl font-bold text-white">{expandedHistoryJob.name || expandedHistoryJob.templateName || 'Untitled Campaign'}</h4>
+                                 <div className="flex items-center gap-2 text-slate-500">
+                                    <Clock size={14} />
+                                    <p className="text-xs font-medium">{new Date(expandedHistoryJob.timestamp || expandedHistoryJob.createdAt).toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'short' })}</p>
+                                 </div>
+                              </div>
+                              <div className="flex items-start md:items-center gap-3">
+                                 {expandedHistoryJob.results && (
+                                   <button onClick={() => handleExportHistoryCSV(expandedHistoryJob)} className="px-6 h-12 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-400 rounded-2xl flex items-center gap-3 text-xs font-bold transition-all shadow-lg active:scale-95 group">
+                                      <DownloadSimple size={20} weight="bold" className="group-hover:translate-y-0.5 transition-transform" />
+                                      Export Dataset
+                                   </button>
+                                 )}
+                              </div>
+                           </div>
+
+                           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 pt-8 border-t border-white/5">
+                              <div className="p-5 rounded-2xl bg-white/[0.01] border border-border-dim text-center hover:bg-white/[0.03] transition-colors">
+                                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-2">Total Packets</p>
+                                 <p className="text-2xl font-bold text-white tracking-tight">{expandedHistoryJob.totalContacts || expandedHistoryJob.total || 0}</p>
+                              </div>
+                              <div className="p-5 rounded-2xl bg-white/[0.01] border border-border-dim text-center hover:bg-white/[0.03] transition-colors">
+                                 <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-[0.2em] mb-2">Successful</p>
+                                 <p className="text-2xl font-bold text-emerald-500 tracking-tight">{expandedHistoryJob.sent || expandedHistoryJob.results?.filter(r => r.status?.includes('Sent')).length || 0}</p>
+                              </div>
+                              <div className="p-5 rounded-2xl bg-white/[0.01] border border-border-dim text-center hover:bg-white/[0.03] transition-colors">
+                                 <p className="text-[10px] font-bold text-red-500 uppercase tracking-[0.2em] mb-2">Failed Delivery</p>
+                                 <p className="text-2xl font-bold text-red-500 tracking-tight">{expandedHistoryJob.failed || expandedHistoryJob.results?.filter(r => r.status?.includes('Failed')).length || 0}</p>
+                              </div>
+                              <div className="p-5 rounded-2xl bg-white/[0.01] border border-border-dim text-center hover:bg-white/[0.03] transition-colors">
+                                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-2">Delivery Status</p>
+                                 <p className="text-2xl font-bold text-white tracking-tight capitalize">{expandedHistoryJob.status || 'Completed'}</p>
+                              </div>
+                           </div>
+                        </div>
+
+                        {/* Contacts Data Table/List */}
+                        <div className="simple-card space-y-6 !bg-transparent border-none p-0">
+                           <div className="flex items-center justify-between px-2">
+                              <h5 className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.3em]">Detailed Delivery Logs</h5>
+                              <p className="text-[10px] font-medium text-slate-600">Total {expandedHistoryJob.results?.length || 0} records indexed</p>
+                           </div>
+                           
+                           {expandedHistoryJob.results ? (
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
+                                {expandedHistoryJob.results.map((res, i) => (
+                                  <div key={i} onClick={() => setSelectedResult(res)} className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.01] hover:bg-white/[0.03] border border-border-dim/50 cursor-pointer transition-all group hover:scale-[1.01]">
+                                     <div className="flex items-center gap-4 min-w-0">
+                                        <div className={cn(
+                                          "w-2.5 h-2.5 rounded-full shadow-[0_0_8px_rgba(0,0,0,0.5)] group-hover:scale-110 transition-transform",
+                                          res.status?.includes('Sent') ? "bg-emerald-500" : res.status?.includes('Skip') ? "bg-amber-500" : "bg-red-500"
+                                        )} />
+                                        <div className="min-w-0">
+                                           <p className="text-[14px] font-bold text-white tracking-tight">{res.phone}</p>
+                                           <p className="text-[11px] text-slate-500 truncate">{res.name || 'Anonymous Contact'}</p>
+                                        </div>
+                                     </div>
+                                     <div className="flex items-center gap-4 shrink-0">
+                                        <span className={cn(
+                                           "text-[10px] font-black uppercase tracking-widest",
+                                           res.status?.includes('Sent') ? "text-emerald-500" : "text-slate-500"
+                                        )}>{res.status}</span>
+                                        <div className="p-2 bg-white/5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
+                                           <Eye size={16} className="text-emerald-500" />
+                                        </div>
+                                     </div>
+                                  </div>
+                                ))}
+                             </div>
+                           ) : (
+                             <div className="simple-card text-center py-20 opacity-20 border-dashed">
+                                <Database size={40} className="mx-auto mb-4" />
+                                <p className="text-xs font-bold uppercase tracking-widest">Metadata payload truncated</p>
+                                <p className="text-[10px] mt-2">Deep logs are currently unavailable for this legacy entry.</p>
+                             </div>
+                           )}
                         </div>
                      </div>
                    ) : (
-                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
+                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in duration-500">
                         {filteredHistory.map(job => {
                            const sent = job.sent || job.results?.filter(r => r.status?.includes('Sent')).length || 0;
                            const failed = job.failed || job.results?.filter(r => r.status?.includes('Failed')).length || 0;
                            const total = job.totalContacts || job.total || 0;
                            const rate = total > 0 ? (sent / total * 100).toFixed(0) : 0;
+                           const isRunning = job.status === 'Running';
+                           const status = job.status || 'Completed';
+
                            return (
-                             <div key={job.id || job._id} onClick={() => handleExpandHistory(job)} className="simple-card card-hover group cursor-pointer border-border-dim transition-all">
-                                <div className="flex justify-between items-start mb-4">
-                                   <div className="p-2.5 bg-white/5 rounded-xl text-slate-500 group-hover:text-emerald-500 transition-colors border border-transparent group-hover:border-emerald-500/10"><Database size={18} /></div>
-                                   <div className="text-right">
-                                      <span className="text-[10px] font-bold text-slate-600">#{String(job.id || job._id || '').slice(-6)}</span>
-                                      <p className={cn("text-[9px] font-black uppercase mt-1", job.status === 'Completed' ? "text-emerald-500" : "text-slate-500")}>{job.status || 'Completed'}</p>
+                              <div key={job.id || job._id} onClick={() => handleExpandHistory(job)} className="p-5 rounded-2xl bg-bg-surface border border-border-dim/50 hover:bg-white/[0.02] hover:border-emerald-500/20 transition-all flex flex-col h-full group relative overflow-hidden">
+                                 {isRunning && (
+                                   <div className="absolute top-0 right-0 p-3">
+                                      <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                                         <div className="w-1 h-1 rounded-full bg-emerald-500 animate-ping" />
+                                         <span className="text-[8px] font-black text-emerald-500 uppercase tracking-widest">Active</span>
+                                      </div>
                                    </div>
-                                </div>
-                                <h4 className="text-sm font-bold text-white mb-1 truncate">{job.name || job.templateName || 'Campaign'}</h4>
-                                <p className="text-[11px] text-slate-500 mb-6">{new Date(job.timestamp || job.createdAt || Date.now()).toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'})}</p>
-                                <div className="grid grid-cols-3 gap-2 mb-6">
-                                   <div className="text-center p-2 rounded-lg bg-white/[0.04] border border-border-dim"><p className="text-[8px] text-slate-600 font-bold uppercase mb-1">Sent</p><p className="text-xs font-bold text-emerald-500">{sent}</p></div>
-                                   <div className="text-center p-2 rounded-lg bg-white/[0.04] border border-border-dim"><p className="text-[8px] text-slate-600 font-bold uppercase mb-1">Fail</p><p className="text-xs font-bold text-red-500">{failed}</p></div>
-                                   <div className="text-center p-2 rounded-lg bg-white/[0.04] border border-border-dim"><p className="text-[8px] text-slate-600 font-bold uppercase mb-1">Total</p><p className="text-xs font-bold text-white">{total}</p></div>
-                                </div>
-                                <div className="pt-4 border-t border-border-dim flex justify-between items-center">
-                                   <div className="flex items-center gap-2"><div className="w-16 h-1.5 bg-white/5 rounded-full overflow-hidden"><div className="h-full bg-emerald-500" style={{ width: `${rate}%` }} /></div><span className="text-[10px] font-bold text-emerald-500">{rate}%</span></div>
-                                   <button onClick={(e) => { e.stopPropagation(); handleExportHistoryCSV(job); }} className="p-2 hover:bg-emerald-500/10 rounded-lg text-slate-500 hover:text-emerald-500 transition-all"><DownloadSimple size={18} /></button>
-                                </div>
-                             </div>
+                                 )}
+                                 <div className="flex justify-between items-start mb-3">
+                                    <div className={cn(
+                                       "w-10 h-10 rounded-xl flex items-center justify-center border transition-all",
+                                       isRunning ? "bg-emerald-500 text-black border-emerald-400" : "bg-white/5 text-slate-500 border-white/5 group-hover:border-emerald-500/10 group-hover:text-emerald-500"
+                                    )}>
+                                       <PaperPlaneTilt size={18} weight={isRunning ? "fill" : "bold"} />
+                                    </div>
+                                    <div className="text-right">
+                                       <div className={cn(
+                                          "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest inline-block border leading-normal",
+                                          status === 'Completed' ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" :
+                                          status === 'Running' ? "bg-amber-500/10 text-amber-500 border-amber-500/20" :
+                                          "bg-red-500/10 text-red-500 border-red-500/20"
+                                       )}>{status}</div>
+                                       <p className="text-[9px] font-bold text-slate-600 mt-1 uppercase tracking-tighter">#{String(job.id || job._id || '').slice(-6)}</p>
+                                    </div>
+                                 </div>
+                                 <div className="mb-4">
+                                    <h4 className="text-[14px] font-bold text-white mb-0.5 truncate tracking-tight">{job.name || job.templateName || 'Campaign'}</h4>
+                                    <p className="text-[10px] text-slate-500">{new Date(job.timestamp || job.createdAt || Date.now()).toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'})}</p>
+                                 </div>
+                                 <div className="mt-auto space-y-4">
+                                    <div className="grid grid-cols-3 gap-2 px-1">
+                                       <div className="text-center py-2 rounded-lg bg-black/10 border border-white/5"><p className="text-[7px] text-slate-600 font-bold uppercase mb-0.5">Sent</p><p className="text-[11px] font-bold text-emerald-500">{sent}</p></div>
+                                       <div className="text-center py-2 rounded-lg bg-black/10 border border-white/5"><p className="text-[7px] text-slate-600 font-bold uppercase mb-0.5">Fail</p><p className="text-[11px] font-bold text-red-500">{failed}</p></div>
+                                       <div className="text-center py-2 rounded-lg bg-black/10 border border-white/5"><p className="text-[7px] text-slate-600 font-bold uppercase mb-0.5">Total</p><p className="text-[11px] font-bold text-white">{total}</p></div>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-3 pt-2">
+                                       <div className="flex-1 space-y-1.5">
+                                          <div className="h-1 bg-white/5 rounded-full overflow-hidden flex">
+                                             <div className="h-full bg-emerald-500" style={{ width: `${rate}%` }} />
+                                             <div className="h-full bg-red-500/50" style={{ width: `${total > 0 ? (failed / total * 100) : 0}%` }} />
+                                          </div>
+                                       </div>
+                                       <div className="flex items-center gap-3 shrink-0">
+                                          <span className="text-[10px] font-black text-emerald-500">{rate}%</span>
+                                          <button onClick={(e) => { e.stopPropagation(); handleExportHistoryCSV(job); }} className="p-1.5 bg-white/5 border border-border-dim rounded-lg text-slate-500 hover:text-emerald-500 transition-all"><DownloadSimple size={14} /></button>
+                                       </div>
+                                    </div>
+                                 </div>
+                              </div>
                            );
                         })}
-                        {filteredHistory.length === 0 && (<div className="col-span-full text-center py-40"><Clock size={40} className="mx-auto text-slate-800 mb-4" /><p className="text-xs font-bold text-slate-700 uppercase tracking-widest">No matching history</p></div>)}
+
+                        {filteredHistory.length === 0 && (
+                          <div className="col-span-full py-32 text-center animate-in zoom-in duration-300">
+                             <div className="w-20 h-20 bg-white/[0.02] border border-dashed border-border-dim rounded-full flex items-center justify-center mx-auto mb-6">
+                                <Clock size={40} className="text-slate-800" />
+                             </div>
+                             <h4 className="text-sm font-bold text-slate-600 uppercase tracking-[0.4em] mb-2">No Matching Records</h4>
+                             <p className="text-[10px] text-slate-700 max-w-xs mx-auto">Try adjusting your search query or filters to find specific campaigns.</p>
+                          </div>
+                        )}
                      </div>
                    )}
                 </motion.div>
@@ -1424,108 +1593,122 @@ export default function App() {
                       !activeChatPhone ? "hidden lg:flex" : "flex"
                    )}>
                       {activeChatPhone ? (
-                         <>
-                            {/* Chat Header */}
-                            <div className="h-16 px-4 flex items-center justify-between border-b border-border-dim bg-white/[0.02] z-10">
-                               <div className="flex items-center gap-3">
-                                  <button onClick={() => setActiveChatPhone(null)} className="lg:hidden p-2 -ml-2 text-slate-400 hover:text-white transition-all shrink-0"><ArrowLeft size={20} weight="bold" /></button>
-                                  <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 border border-emerald-500/10 font-bold overflow-hidden cursor-pointer">
-                                     {(chats.find(c => c.phone === activeChatPhone)?.name || 'C').charAt(0).toUpperCase()}
-                                  </div>
-                                  <div className="min-w-0 cursor-pointer">
-                                     <h3 className="text-[15px] font-medium text-[#e9edef] truncate">{chats.find(c => c.phone === activeChatPhone)?.name || 'Customer'}</h3>
-                                     <p className="text-[12px] text-slate-500 font-medium">online</p>
-                                  </div>
-                               </div>
-                               <div className="flex items-center gap-2 text-slate-500">
-                                  <button className="p-2 hover:bg-white/5 rounded-full transition-all"><MagnifyingGlass size={20} /></button>
-                                  <button className="p-2 hover:bg-white/5 rounded-full transition-all"><DotsThreeVertical size={20} weight="bold" /></button>
-                               </div>
-                            </div>
+                        <>
+                           {/* Chat Header */}
+                           <div className="h-16 px-4 flex items-center justify-between border-b border-border-dim bg-white/[0.02] z-10">
+                              <div className="flex items-center gap-3">
+                                 <button onClick={() => setActiveChatPhone(null)} className="lg:hidden p-2 -ml-2 text-slate-400 hover:text-white transition-all shrink-0"><ArrowLeft size={20} weight="bold" /></button>
+                                 <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 border border-emerald-500/10 font-bold overflow-hidden cursor-pointer shrink-0">
+                                    {(chats.find(c => c.phone === activeChatPhone)?.name || 'C').charAt(0).toUpperCase()}
+                                 </div>
+                                 <div className="min-w-0 cursor-pointer flex flex-col justify-center">
+                                    <h3 className="text-[15px] font-medium text-[#e9edef] truncate h-5 leading-none mt-1">{chats.find(c => c.phone === activeChatPhone)?.name || 'Customer'}</h3>
+                                    <p className="text-[12px] text-slate-500 font-medium h-4 leading-none mb-1">online</p>
+                                 </div>
+                              </div>
+                              <div className="flex items-center gap-2 text-slate-500">
+                                 <button className="p-2 hover:bg-white/5 rounded-full transition-all"><MagnifyingGlass size={20} /></button>
+                                 <button className="p-2 hover:bg-white/5 rounded-full transition-all"><DotsThreeVertical size={20} weight="bold" /></button>
+                              </div>
+                           </div>
 
-                            {/* Message Area */}
-                            <div className="flex-1 overflow-y-auto p-4 lg:p-6 lg:px-16 space-y-2 custom-scrollbar flex flex-col relative">
-                               <div className="wa-doodle" />
-                               {activeChatHistory.map((msg, i) => {
-                                  const isMe = msg.from === 'me' || msg.from === 'bot';
-                                  return (
-                                     <div key={i} className={cn("flex flex-col relative z-10 mb-1", isMe ? "items-end" : "items-start")}>
-                                        <div className={cn(
-                                          "chat-bubble shadow-sm", 
-                                          isMe ? "chat-bubble-outgoing" : "chat-bubble-incoming"
-                                        )}>
-                                           {/* MEDIA CONTENT */}
-                                           {msg.type === 'image' && (
-                                              <div className="mb-2 -mx-1 -mt-1 rounded-lg overflow-hidden bg-black/10">
-                                                 {msg.mediaUrl ? (
-                                                    <img src={msg.mediaUrl} alt="msg" className="max-w-full h-auto object-cover max-h-64" />
-                                                 ) : (
-                                                    <div className="p-4 flex items-center gap-2 text-[10px] font-bold opacity-50"><ImageSquare size={16} /> Image Received</div>
-                                                 )}
-                                              </div>
-                                           )}
-                                           
-                                           {/* TEXT CONTENT */}
-                                           <div className="text-[14px] leading-[19px] whitespace-pre-wrap break-words pr-12 relative">
-                                              {(msg.type === 'text' || !msg.type) && msg.text}
-                                              {msg.type !== 'text' && msg.type && msg.text && msg.text !== msg.filename && (
-                                                 <div className="mt-2 pt-2 border-t border-black/5 opacity-80">{msg.text}</div>
-                                              )}
-                                              
-                                              <div className={cn("absolute bottom-[-6px] right-[-10px] flex items-center gap-1", isMe ? "justify-end" : "")}>
-                                                 <span className="text-[11px] opacity-60 font-medium">{msg.timestamp ? new Date(parseInt(msg.timestamp)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
-                                                 {isMe && <Check size={14} className="text-sky-400" />}
-                                              </div>
-                                           </div>
-                                        </div>
-                                     </div>
-                                  );
-                               })}
-                               <div ref={messagesEndRef} />
-                            </div>
+                           {/* Message Area */}
+                           <div className="flex-1 overflow-y-auto p-4 lg:p-6 lg:px-16 space-y-2 custom-scrollbar flex flex-col relative inbox-scroll-container">
+                              <div className="wa-doodle" />
+                              {activeChatHistory.map((msg, i) => {
+                                 const isMe = msg.from === 'me' || msg.from === 'bot';
+                                 
+                                 // Date grouping logic
+                                 const msgDate = new Date(parseInt(msg.timestamp || Date.now()));
+                                 const prevMsg = activeChatHistory[i-1];
+                                 const prevDate = prevMsg ? new Date(parseInt(prevMsg.timestamp || Date.now())) : null;
+                                 const showDate = !prevDate || msgDate.toDateString() !== prevDate.toDateString();
+                                 
+                                 let dateLabel = msgDate.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
+                                 if (msgDate.toDateString() === new Date().toDateString()) dateLabel = 'Today';
+                                 else if (msgDate.toDateString() === new Date(Date.now() - 86400000).toDateString()) dateLabel = 'Yesterday';
 
-                            {/* Input Area */}
-                            <form onSubmit={handleSendReply} className="px-4 py-2 bg-white/[0.04] border-t border-border-dim flex items-center gap-2 relative z-20">
-                               <button type="button" className="p-2 text-slate-500 hover:text-wa-text transition-all"><Smiley size={24} /></button>
-                               <button type="button" onClick={() => setShowAttachmentMenu(!showAttachmentMenu)} className={cn("p-2 transition-all", showAttachmentMenu ? "text-emerald-500" : "text-slate-500 hover:text-wa-text")}>
-                                  <Paperclip size={24} />
-                               </button>
-                               
-                               <AnimatePresence>
-                                  {showAttachmentMenu && (
-                                     <motion.div 
-                                       initial={{ opacity: 0, scale: 0.95, y: 5 }}
-                                       animate={{ opacity: 1, scale: 1, y: 0 }}
-                                       exit={{ opacity: 0, scale: 0.95, y: 5 }}
-                                       className="absolute bottom-full left-4 mb-4 bg-[#233138] border border-border-dim rounded-xl shadow-2xl p-1.5 flex flex-col gap-0.5 z-50 min-w-[200px]"
-                                     >
-                                        <button type="button" onClick={() => document.getElementById('inbox-img').click()} className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-white/5 text-[#d1d7db] transition-all text-[14px] font-medium">
-                                           <div className="w-8 h-8 rounded-full bg-[#bf59cf] flex items-center justify-center text-white"><ImageSquare size={18} weight="fill" /></div>
-                                           Photos & Videos
-                                        </button>
-                                        <button type="button" onClick={() => document.getElementById('inbox-doc').click()} className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-white/5 text-[#d1d7db] transition-all text-[14px] font-medium">
-                                           <div className="w-8 h-8 rounded-full bg-[#7f66ff] flex items-center justify-center text-white"><FileText size={18} weight="fill" /></div>
-                                           Document
-                                        </button>
-                                        <input id="inbox-img" type="file" className="hidden" accept="image/*,video/*" onChange={(e) => handleSelectAttachment(e.target.files[0], 'image')} />
-                                        <input id="inbox-doc" type="file" className="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx" onChange={(e) => handleSelectAttachment(e.target.files[0], 'document')} />
-                                     </motion.div>
-                                  )}
-                               </AnimatePresence>
+                                 return (
+                                    <React.Fragment key={i}>
+                                       {showDate && <div className="date-separator relative z-10">{dateLabel}</div>}
+                                       <div className={cn("flex flex-col relative z-10 mb-1", isMe ? "items-end" : "items-start")}>
+                                          <div className={cn(
+                                            "chat-bubble shadow-sm", 
+                                            isMe ? "chat-bubble-outgoing" : "chat-bubble-incoming"
+                                          )}>
+                                             {/* MEDIA CONTENT */}
+                                             {msg.type === 'image' && (
+                                                <div className="mb-2 -mx-1 -mt-1 rounded-lg overflow-hidden bg-black/10">
+                                                   {msg.mediaUrl ? (
+                                                      <img src={msg.mediaUrl} alt="msg" className="max-w-full h-auto object-cover max-h-64" />
+                                                   ) : (
+                                                      <div className="p-4 flex items-center gap-2 text-[10px] font-bold opacity-50"><ImageSquare size={16} /> Image Received</div>
+                                                   )}
+                                                </div>
+                                             )}
+                                             
+                                             {/* TEXT CONTENT */}
+                                             <div className="text-[14px] leading-[19px] whitespace-pre-wrap break-words">
+                                                {(msg.type === 'text' || !msg.type) && msg.text}
+                                                {msg.type !== 'text' && msg.type && msg.text && msg.text !== msg.filename && (
+                                                   <div className="mt-2 pt-2 border-t border-black/5 opacity-80">{msg.text}</div>
+                                                )}
+                                                
+                                                <div className="chat-meta">
+                                                   <span className="chat-time">{msg.timestamp ? new Date(parseInt(msg.timestamp)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                                                   {isMe && <Check size={16} weight="fill" className="text-sky-400" />}
+                                                </div>
+                                             </div>
+                                          </div>
+                                       </div>
+                                    </React.Fragment>
+                                 );
+                              })}
+                              <div ref={messagesEndRef} />
+                           </div>
 
-                               <textarea 
-                                  value={replyText} 
-                                  onChange={e => { setReplyText(e.target.value); if(showAttachmentMenu) setShowAttachmentMenu(false); }} 
-                                  placeholder="Type a message" 
-                                  className="flex-1 bg-[#2a3942] border-none rounded-lg p-2.5 px-4 text-[15px] font-medium text-white outline-none placeholder:text-slate-500 resize-none min-h-[42px] max-h-32 transition-all" 
-                                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendReply(e); } }} 
-                               />
-                               
-                               <button type="submit" disabled={isSendingReply || (!replyText.trim() && !pendingAttachment)} className="p-2 text-slate-500 hover:text-emerald-500 disabled:opacity-30 transition-colors">
-                                  {isSendingReply ? <ArrowsClockwise size={24} className="animate-spin" /> : <PaperPlaneTilt size={24} weight="fill" />}
-                               </button>
-                            </form>
-                         </>
+                           {/* Input Area */}
+                           <form onSubmit={handleSendReply} className="px-4 py-2 bg-white/[0.04] border-t border-border-dim flex items-center gap-2 relative z-20">
+                              <button type="button" className="p-2 text-slate-500 hover:text-wa-text transition-all"><Smiley size={24} /></button>
+                              <button type="button" onClick={() => setShowAttachmentMenu(!showAttachmentMenu)} className={cn("p-2 transition-all", showAttachmentMenu ? "text-emerald-500" : "text-slate-500 hover:text-wa-text")}>
+                                 <Paperclip size={24} />
+                              </button>
+                              
+                              <AnimatePresence>
+                                 {showAttachmentMenu && (
+                                    <motion.div 
+                                      initial={{ opacity: 0, scale: 0.95, y: 5 }}
+                                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                                      exit={{ opacity: 0, scale: 0.95, y: 5 }}
+                                      className="absolute bottom-full left-4 mb-4 bg-[#233138] border border-border-dim rounded-xl shadow-2xl p-1.5 flex flex-col gap-0.5 z-50 min-w-[200px]"
+                                    >
+                                       <button type="button" onClick={() => document.getElementById('inbox-img').click()} className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-white/5 text-[#d1d7db] transition-all text-[14px] font-medium">
+                                          <div className="w-8 h-8 rounded-full bg-[#bf59cf] flex items-center justify-center text-white"><ImageSquare size={18} weight="fill" /></div>
+                                          Photos & Videos
+                                       </button>
+                                       <button type="button" onClick={() => document.getElementById('inbox-doc').click()} className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-white/5 text-[#d1d7db] transition-all text-[14px] font-medium">
+                                          <div className="w-8 h-8 rounded-full bg-[#7f66ff] flex items-center justify-center text-white"><FileText size={18} weight="fill" /></div>
+                                          Document
+                                       </button>
+                                       <input id="inbox-img" type="file" className="hidden" accept="image/*,video/*" onChange={(e) => handleSelectAttachment(e.target.files[0], 'image')} />
+                                       <input id="inbox-doc" type="file" className="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx" onChange={(e) => handleSelectAttachment(e.target.files[0], 'document')} />
+                                    </motion.div>
+                                 )}
+                              </AnimatePresence>
+
+                              <textarea 
+                                 value={replyText} 
+                                 onChange={e => { setReplyText(e.target.value); if(showAttachmentMenu) setShowAttachmentMenu(false); }} 
+                                 placeholder="Type a message" 
+                                 className="flex-1 bg-[#2a3942] border-none rounded-lg p-2.5 px-4 text-[15px] font-medium text-white outline-none placeholder:text-slate-500 resize-none min-h-[42px] max-h-32 transition-all" 
+                                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendReply(e); } }} 
+                              />
+                              
+                              <button type="submit" disabled={isSendingReply || (!replyText.trim() && !pendingAttachment)} className="p-2 text-slate-500 hover:text-emerald-500 disabled:opacity-30 transition-colors">
+                                 {isSendingReply ? <ArrowsClockwise size={24} className="animate-spin" /> : <PaperPlaneTilt size={24} weight="fill" />}
+                              </button>
+                           </form>
+                        </>
                       ) : (
                          <div className="flex-1 flex flex-col items-center justify-center p-10 text-center opacity-30 select-none">
                             <div className="w-20 h-20 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 mb-6"><ChatCircleDots size={40} /></div>

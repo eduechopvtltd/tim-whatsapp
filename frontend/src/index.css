@@ -64,7 +64,7 @@
     background-color: var(--wa-chat-bg);
     background-image: url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png");
     background-blend-mode: overlay;
-    opacity: 0.06;
+    opacity: 0.05;
     position: absolute;
     inset: 0;
     pointer-events: none;
@@ -72,10 +72,13 @@
 
   .chat-bubble {
     position: relative;
-    max-width: 65%;
-    padding: 6px 12px 10px 12px;
+    max-width: 80%;
+    padding: 6px 10px 8px 12px;
     border-radius: 8px;
     box-shadow: 0 1px 0.5px rgba(0,0,0,0.13);
+    display: flex;
+    flex-direction: column;
+    min-width: 60px;
   }
 
   .chat-bubble-incoming {
@@ -112,12 +115,25 @@
     clip-path: polygon(0 0, 100% 0, 0 100%);
   }
 
+  .chat-meta {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    justify-content: flex-end;
+    margin-top: 2px;
+    height: 15px;
+    user-select: none;
+  }
+
   .chat-time {
-    font-size: 10px;
+    font-size: 11px;
     color: var(--wa-text-dim);
-    float: right;
-    margin-top: 4px;
-    margin-left: 8px;
+    font-weight: 500;
+  }
+
+  .date-separator {
+    @apply self-center bg-[#1d2a30] text-[#8696a0] text-[11px] px-3 py-1.5 rounded-lg my-4 uppercase font-bold tracking-widest shadow-sm;
+    user-select: none;
   }
 
   /* Standard Thin scrollbar */
