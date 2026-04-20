@@ -999,7 +999,7 @@ export default function App() {
                                      <p className="text-[9px] text-emerald-500 font-bold uppercase mt-0.5">{csvData.length} Contacts Found</p>
                                   </div>
                                ) : (
-                                  <div className="text-center"><Plus size={18} className="text-slate-600 mb-1 mx-auto" weight="bold" /><p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Click to Upload CSV</p></div>
+                                 <p className="text-[10px] text-slate-700 mt-2">Full delivery details available in backend logs</p>
                                )}
                             </div>
                             <input key={fileKey} type="file" accept=".csv" className="hidden" onChange={handleFileUpload} />
@@ -1441,7 +1441,8 @@ export default function App() {
                              <div className="simple-card text-center py-20 opacity-20 border-dashed">
                                 <Database size={40} className="mx-auto mb-4" />
                                 <p className="text-xs font-bold uppercase tracking-widest">Metadata payload truncated</p>
-                                <p cl                             </div>
+                                 <p className="text-[10px] text-slate-700 mt-2">Full delivery details available in backend logs</p>
+                              </div>
                            )}
                         </div>
                      </div>
@@ -1488,9 +1489,9 @@ export default function App() {
                                  </div>
                                  <div className="mt-auto space-y-4">
                                     <div className="grid grid-cols-3 gap-2 px-1">
-                                       <div className="text-center py-2 rounded-lg bg-black/10 border border-white/5"><p className="text-[7px] text-slate-600 font-bold uppercase mb-0.5">Sent</p><p className="text-[11px] font-bold text-emerald-500">{sent}</p></div>
-                                       <div className="text-center py-2 rounded-lg bg-black/10 border border-white/5"><p className="text-[7px] text-slate-600 font-bold uppercase mb-0.5">Fail</p><p className="text-[11px] font-bold text-red-500">{failed}</p></div>
-                                       <div className="text-center py-2 rounded-lg bg-black/10 border border-white/5"><p className="text-[7px] text-slate-600 font-bold uppercase mb-0.5">Total</p><p className="text-[11px] font-bold text-white">{total}</p></div>
+                                 <p className="text-[10px] text-slate-700 mt-2">Full delivery details available in backend logs</p>
+                                 <p className="text-[10px] text-slate-700 mt-2">Full delivery details available in backend logs</p>
+                                 <p className="text-[10px] text-slate-700 mt-2">Full delivery details available in backend logs</p>
                                     </div>
                                     <div className="flex items-center justify-between gap-3 pt-2">
                                        <div className="flex-1 space-y-1.5">
@@ -1585,7 +1586,7 @@ export default function App() {
                                </div>
                             </button>
                          )) : (
-                            <div className="py-20 text-center space-y-3 opacity-30"><ChatCircleDots size={32} className="mx-auto" /><p className="text-[10px] font-bold uppercase tracking-widest">No messages yet</p></div>
+                                 <p className="text-[10px] text-slate-700 mt-2">Full delivery details available in backend logs</p>
                          )}
                       </div>
                    </div>
@@ -1730,7 +1731,7 @@ export default function App() {
                       <div className="section-header !mb-8">
                           <div className="flex items-center gap-3 lg:gap-4 flex-1">
                              <div className="step-number"><Gear size={18} weight="bold" /></div>
-                             <div><h3 className="text-base lg:text-lg font-bold">API Configuration</h3><p className="text-[10px] lg:text-xs text-slate-500">Connect your Meta account credentials.</p></div>
+                                 <p className="text-[10px] text-slate-700 mt-2">Full delivery details available in backend logs</p>
                           </div>
                           <button type="button" onClick={() => setRevealCredentials(!revealCredentials)} className={cn("flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all text-[10px] font-bold uppercase tracking-widest", revealCredentials ? "bg-amber-500/10 text-amber-500 border-amber-500/20" : "bg-white/5 text-slate-400 border-border-dim hover:text-white")}>
                              {revealCredentials ? <><EyeSlash size={14} weight="bold" /> Mask</> : <><Eye size={14} weight="bold" /> Reveal</>}
@@ -1764,7 +1765,7 @@ export default function App() {
                          <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3 lg:gap-4">
                                <div className="w-9 h-9 lg:w-10 lg:h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500"><Envelope size={18} weight="bold" /></div>
-                               <div><h3 className="text-sm lg:text-base font-bold">Email Alerts</h3><p className="text-[10px] lg:text-xs text-slate-500">Get notified when customers reply.</p></div>
+                                 <p className="text-[10px] text-slate-700 mt-2">Full delivery details available in backend logs</p>
                             </div>
                             <button 
                               onClick={() => setEmailConfig({...emailConfig, enabled: !emailConfig.enabled})}
@@ -1804,7 +1805,7 @@ export default function App() {
                        <div className="pt-8 border-t border-border-dim space-y-6">
                           <div className="flex items-center gap-3">
                              <div className="w-9 h-9 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-500"><ShieldCheck size={18} weight="bold" /></div>
-                             <div><h4 className="text-sm font-bold">Meta Phone Registration</h4><p className="text-[10px] text-slate-500">Only needed if your dashboard shows "Pending".</p></div>
+                                 <p className="text-[10px] text-slate-700 mt-2">Full delivery details available in backend logs</p>
                           </div>
                           <div className="space-y-4 bg-white/[0.01] p-5 rounded-2xl border border-border-dim">
                              <div className="space-y-2">
