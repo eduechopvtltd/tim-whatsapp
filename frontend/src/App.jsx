@@ -34,7 +34,14 @@ import {
   FileText,
   Phone,
   ArrowSquareOut,
-  Envelope
+  Envelope,
+  User,
+  CircleDashed,
+  ChatCenteredDots,
+  DotsThreeVertical,
+  Smiley,
+  Check,
+  Lock
 } from "@phosphor-icons/react";
 import { motion, AnimatePresence } from 'framer-motion';
 import { clsx } from 'clsx';
@@ -1346,40 +1353,64 @@ export default function App() {
 
               {/* ═══ INBOX TAB ═══ */}
               {activeTab === 'inbox' && (
-                <motion.div key="inbox" {...PAGE_TRANSITION} className="h-[calc(100vh-12rem)] flex gap-4 lg:gap-6 relative">
+                <motion.div key="inbox" {...PAGE_TRANSITION} className="h-[calc(100vh-12rem)] flex gap-0 bg-bg-surface border border-border-dim rounded-2xl overflow-hidden relative">
+                   {/* LEFT SIDEBAR: CONVERSATIONS */}
                    <div className={cn(
-                      "w-full lg:w-80 flex flex-col gap-4 shrink-0 transition-all duration-300",
+                      "w-full lg:w-[350px] flex flex-col border-r border-border-dim bg-bg-base shrink-0 transition-all duration-300",
                       activeChatPhone ? "hidden lg:flex" : "flex"
                    )}>
-                      <div className="relative">
-                         <MagnifyingGlass size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" />
-                         <input placeholder="Search conversations..." className="w-full bg-white/[0.02] border border-border-dim rounded-xl pl-10 pr-4 py-3 text-xs font-medium text-white outline-none focus:border-emerald-500/20 placeholder:text-slate-700" />
+                      {/* Sidebar Header */}
+                      <div className="h-16 px-4 flex items-center justify-between border-b border-border-dim bg-white/[0.02]">
+                         <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center text-slate-500 overflow-hidden border border-white/5">
+                            <User size={24} weight="fill" />
+                         </div>
+                         <div className="flex items-center gap-1">
+                            <button className="p-2 text-slate-500 hover:text-emerald-500 hover:bg-white/5 rounded-full transition-all"><CircleDashed size={20} /></button>
+                            <button className="p-2 text-slate-500 hover:text-emerald-500 hover:bg-white/5 rounded-full transition-all"><ChatCenteredDots size={20} /></button>
+                            <button className="p-2 text-slate-500 hover:text-emerald-500 hover:bg-white/5 rounded-full transition-all"><DotsThreeVertical size={20} weight="bold" /></button>
+                         </div>
                       </div>
-                      <div className="flex-1 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+
+                      {/* Search Bar */}
+                      <div className="p-2 border-b border-border-dim">
+                         <div className="relative">
+                            <MagnifyingGlass size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" />
+                            <input placeholder="Search or start new chat" className="w-full bg-white/[0.05] border-none rounded-lg pl-12 pr-4 py-2 text-xs font-medium text-white outline-none placeholder:text-slate-600 h-9" />
+                         </div>
+                      </div>
+
+                      {/* Chat List */}
+                      <div className="flex-1 overflow-y-auto custom-scrollbar">
                          {sortedChats.length > 0 ? sortedChats.map(chat => (
-                            <button key={chat.phone} onClick={async () => { 
-                               setActiveChatPhone(chat.phone); 
-                               setActiveChatHistory([]);
-                               // Mark as read
-                               try { fetchWithAuth(`${API_BASE}/api/chats/${chat.phone}/read`, { method: 'POST' }); } catch(e){}
-                               // Update local state for badge
-                               setChats(prev => prev.map(c => c.phone === chat.phone ? { ...c, unreadCount: 0 } : c));
-                            }}
-                              className={cn("w-full text-left p-4 rounded-2xl border transition-all group relative", activeChatPhone === chat.phone ? "bg-emerald-500/10 border-emerald-500/30 shadow-lg shadow-emerald-500/5" : "bg-white/[0.01] border-border-dim hover:bg-white/[0.03] hover:border-emerald-500/10")}>
-                               <div className="flex justify-between items-start mb-1">
-                                  <div className="flex items-center gap-2 min-w-0">
-                                     <span className={cn("text-xs font-bold transition-colors truncate", activeChatPhone === chat.phone ? "text-emerald-500" : "text-white")}>{chat.name || chat.phone}</span>
-                                     {chat.unreadCount > 0 && (
-                                        <span className="bg-emerald-500 text-black text-[9px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center shadow-lg shadow-emerald-500/20">{chat.unreadCount}</span>
-                                     )}
-                                  </div>
-                                  {(chat.lastMessageAt || chat.updatedAt) && <span className="text-[9px] font-bold text-slate-600 shrink-0">{new Date(chat.lastMessageAt || chat.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
+                            <button 
+                               key={chat.phone} 
+                               onClick={async () => { 
+                                  setActiveChatPhone(chat.phone); 
+                                  setActiveChatHistory([]);
+                                  try { fetchWithAuth(`${API_BASE}/api/chats/${chat.phone}/read`, { method: 'POST' }); } catch(e){}
+                                  setChats(prev => prev.map(c => c.phone === chat.phone ? { ...c, unreadCount: 0 } : c));
+                               }}
+                               className={cn(
+                                  "w-full flex items-center gap-3 px-4 py-3 border-b border-border-dim/50 transition-all relative group",
+                                  activeChatPhone === chat.phone ? "bg-white/[0.05]" : "hover:bg-white/[0.02]"
+                               )}
+                            >
+                               <div className="w-12 h-12 rounded-full bg-emerald-500/10 flex-shrink-0 flex items-center justify-center text-emerald-500 border border-emerald-500/10 font-bold overflow-hidden">
+                                  {(chat.name || chat.phone).charAt(0).toUpperCase()}
                                </div>
-                               <p className="text-[10px] text-slate-500 truncate pr-4">
-                                 {chat.messages?.[chat.messages.length - 1]?.from === 'me' ? '✓ ' : ''}
-                                 {chat.messages?.[chat.messages.length - 1]?.text || 'No messages'}
-                               </p>
-                               {activeChatPhone === chat.phone && <div className="absolute right-3 top-1/2 -translate-y-1/2 w-1 h-8 bg-emerald-500 rounded-full" />}
+                               <div className="flex-1 min-w-0 py-1">
+                                  <div className="flex justify-between items-center mb-0.5">
+                                     <span className="text-[14px] font-medium text-[#e9edef] truncate">{chat.name || chat.phone}</span>
+                                     {(chat.lastMessageAt || chat.updatedAt) && <span className={cn("text-[11px] font-medium", chat.unreadCount > 0 ? "text-emerald-500" : "text-slate-500")}>{new Date(chat.lastMessageAt || chat.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                     <p className="text-[13px] text-slate-500 truncate flex-1 pr-4">
+                                        {chat.messages?.[chat.messages.length - 1]?.from === 'me' && <Check size={14} className="inline mr-1 text-sky-400" />}
+                                        {chat.messages?.[chat.messages.length - 1]?.text || 'No messages'}
+                                     </p>
+                                     {chat.unreadCount > 0 && <span className="bg-emerald-500 text-black text-[10px] font-bold px-1.5 min-w-[19px] h-[19px] flex items-center justify-center rounded-full shadow-lg">{chat.unreadCount}</span>}
+                                  </div>
+                               </div>
                             </button>
                          )) : (
                             <div className="py-20 text-center space-y-3 opacity-30"><ChatCircleDots size={32} className="mx-auto" /><p className="text-[10px] font-bold uppercase tracking-widest">No messages yet</p></div>
@@ -1387,142 +1418,112 @@ export default function App() {
                       </div>
                    </div>
 
+                   {/* RIGHT SIDE: CHAT WINDOW */}
                    <div className={cn(
-                      "flex-1 flex flex-col bg-bg-surface/50 border border-border-dim rounded-[2rem] overflow-hidden relative min-w-0 transition-all duration-300",
+                      "flex-1 flex flex-col bg-wa-chat-bg relative min-w-0 transition-all duration-300",
                       !activeChatPhone ? "hidden lg:flex" : "flex"
                    )}>
                       {activeChatPhone ? (
                          <>
-                            <div className="p-4 lg:p-6 border-b border-border-dim flex items-center justify-between bg-white/[0.01]">
+                            {/* Chat Header */}
+                            <div className="h-16 px-4 flex items-center justify-between border-b border-border-dim bg-white/[0.02] z-10">
                                <div className="flex items-center gap-3">
-                                  <button onClick={() => setActiveChatPhone(null)} className="lg:hidden p-2 -ml-2 text-slate-400 hover:text-white bg-white/5 rounded-lg border border-border-dim transition-all shrink-0"><ArrowLeft size={18} weight="bold" /></button>
-                                  <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 border border-emerald-500/20 font-bold text-sm">
+                                  <button onClick={() => setActiveChatPhone(null)} className="lg:hidden p-2 -ml-2 text-slate-400 hover:text-white transition-all shrink-0"><ArrowLeft size={20} weight="bold" /></button>
+                                  <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 border border-emerald-500/10 font-bold overflow-hidden cursor-pointer">
                                      {(chats.find(c => c.phone === activeChatPhone)?.name || 'C').charAt(0).toUpperCase()}
                                   </div>
-                                  <div>
-                                     <h3 className="text-sm font-bold text-white">{chats.find(c => c.phone === activeChatPhone)?.name || 'Customer'}</h3>
-                                     <p className="text-[10px] text-slate-500 font-bold">{activeChatPhone}</p>
+                                  <div className="min-w-0 cursor-pointer">
+                                     <h3 className="text-[15px] font-medium text-[#e9edef] truncate">{chats.find(c => c.phone === activeChatPhone)?.name || 'Customer'}</h3>
+                                     <p className="text-[12px] text-slate-500 font-medium">online</p>
                                   </div>
                                </div>
+                               <div className="flex items-center gap-2 text-slate-500">
+                                  <button className="p-2 hover:bg-white/5 rounded-full transition-all"><MagnifyingGlass size={20} /></button>
+                                  <button className="p-2 hover:bg-white/5 rounded-full transition-all"><DotsThreeVertical size={20} weight="bold" /></button>
+                               </div>
                             </div>
-                            <div className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-4 custom-scrollbar flex flex-col">
-                               {activeChatHistory.map((msg, i) => (
-                                  <div key={i} className={cn("max-w-[85%] sm:max-w-[70%] flex flex-col", (msg.from === 'me' || msg.from === 'bot') ? "self-end items-end" : "self-start items-start")}>
-                                     <div className={cn(
-                                       "px-4 py-2.5 rounded-xl text-[13px] font-medium leading-relaxed shadow-sm whitespace-pre-wrap break-words overflow-hidden", 
-                                       (msg.from === 'me' || msg.from === 'bot') ? "bg-emerald-500 text-black rounded-tr-none" : "bg-white/5 text-slate-200 border border-border-dim rounded-tl-none")}>
-                                        
-                                        {/* MEDIA CONTENT */}
-                                        {msg.type === 'image' && (
-                                           <div className="mb-2 -mx-1 -mt-1 rounded-xl overflow-hidden bg-black/20">
-                                              {msg.mediaUrl ? (
-                                                 <img src={msg.mediaUrl} alt="msg" className="max-w-full h-auto object-cover max-h-64" />
-                                              ) : (
-                                                 <div className="p-4 flex items-center gap-2 text-[10px] font-bold opacity-50"><ImageSquare size={16} /> Image Received</div>
+
+                            {/* Message Area */}
+                            <div className="flex-1 overflow-y-auto p-4 lg:p-6 lg:px-16 space-y-2 custom-scrollbar flex flex-col relative">
+                               <div className="wa-doodle" />
+                               {activeChatHistory.map((msg, i) => {
+                                  const isMe = msg.from === 'me' || msg.from === 'bot';
+                                  return (
+                                     <div key={i} className={cn("flex flex-col relative z-10 mb-1", isMe ? "items-end" : "items-start")}>
+                                        <div className={cn(
+                                          "chat-bubble shadow-sm", 
+                                          isMe ? "chat-bubble-outgoing" : "chat-bubble-incoming"
+                                        )}>
+                                           {/* MEDIA CONTENT */}
+                                           {msg.type === 'image' && (
+                                              <div className="mb-2 -mx-1 -mt-1 rounded-lg overflow-hidden bg-black/10">
+                                                 {msg.mediaUrl ? (
+                                                    <img src={msg.mediaUrl} alt="msg" className="max-w-full h-auto object-cover max-h-64" />
+                                                 ) : (
+                                                    <div className="p-4 flex items-center gap-2 text-[10px] font-bold opacity-50"><ImageSquare size={16} /> Image Received</div>
+                                                 )}
+                                              </div>
+                                           )}
+                                           
+                                           {/* TEXT CONTENT */}
+                                           <div className="text-[14px] leading-[19px] whitespace-pre-wrap break-words pr-12 relative">
+                                              {(msg.type === 'text' || !msg.type) && msg.text}
+                                              {msg.type !== 'text' && msg.type && msg.text && msg.text !== msg.filename && (
+                                                 <div className="mt-2 pt-2 border-t border-black/5 opacity-80">{msg.text}</div>
                                               )}
-                                           </div>
-                                        )}
-                                        {msg.type === 'video' && (
-                                           <div className="mb-2 -mx-1 -mt-1 rounded-xl overflow-hidden bg-black/20">
-                                              {msg.mediaUrl ? (
-                                                 <video controls src={msg.mediaUrl} className="max-w-full h-auto max-h-64" />
-                                              ) : (
-                                                 <div className="p-4 flex items-center gap-2 text-[10px] font-bold opacity-50"><VideoCamera size={16} /> Video Received</div>
-                                              )}
-                                           </div>
-                                        )}
-                                        {msg.type === 'document' && (
-                                           <div className="mb-2 p-3 bg-black/10 rounded-xl flex items-center gap-3 border border-white/5">
-                                              <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-500"><FileText size={20} /></div>
-                                              <div className="min-w-0 flex-1">
-                                                 <p className="text-[11px] font-bold truncate">{msg.filename || msg.text || 'Document'}</p>
-                                                 <p className="text-[9px] opacity-50 uppercase tracking-widest font-bold">PDF / DOC</p>
+                                              
+                                              <div className={cn("absolute bottom-[-6px] right-[-10px] flex items-center gap-1", isMe ? "justify-end" : "")}>
+                                                 <span className="text-[11px] opacity-60 font-medium">{msg.timestamp ? new Date(parseInt(msg.timestamp)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                                                 {isMe && <Check size={14} className="text-sky-400" />}
                                               </div>
                                            </div>
-                                        )}
-
-                                        {/* TEXT CONTENT */}
-                                        {(msg.type === 'text' || !msg.type) && msg.text}
-                                        {msg.type !== 'text' && msg.type && msg.text && msg.text !== msg.filename && (
-                                           <div className="mt-2 pt-2 border-t border-black/5">{msg.text}</div>
-                                        )}
+                                        </div>
                                      </div>
-                                     <span className="text-[8px] font-bold text-slate-600 mt-1.5 uppercase tracking-widest px-1">{msg.timestamp ? new Date(parseInt(msg.timestamp)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
-                                  </div>
-                               ))}
+                                  );
+                               })}
                                <div ref={messagesEndRef} />
                             </div>
-                            <form onSubmit={handleSendReply} className="p-4 lg:p-6 bg-white/[0.01] border-t border-border-dim space-y-3 relative">
+
+                            {/* Input Area */}
+                            <form onSubmit={handleSendReply} className="px-4 py-2 bg-white/[0.04] border-t border-border-dim flex items-center gap-2 relative z-20">
+                               <button type="button" className="p-2 text-slate-500 hover:text-wa-text transition-all"><Smiley size={24} /></button>
+                               <button type="button" onClick={() => setShowAttachmentMenu(!showAttachmentMenu)} className={cn("p-2 transition-all", showAttachmentMenu ? "text-emerald-500" : "text-slate-500 hover:text-wa-text")}>
+                                  <Paperclip size={24} />
+                               </button>
+                               
                                <AnimatePresence>
                                   {showAttachmentMenu && (
                                      <motion.div 
                                        initial={{ opacity: 0, scale: 0.95, y: 5 }}
                                        animate={{ opacity: 1, scale: 1, y: 0 }}
                                        exit={{ opacity: 0, scale: 0.95, y: 5 }}
-                                       className="absolute bottom-full left-6 mb-4 bg-bg-surface border border-border-dim rounded-xl shadow-2xl p-1.5 flex flex-col gap-0.5 z-50 min-w-[150px]"
+                                       className="absolute bottom-full left-4 mb-4 bg-[#233138] border border-border-dim rounded-xl shadow-2xl p-1.5 flex flex-col gap-0.5 z-50 min-w-[200px]"
                                      >
-                                        <button type="button" onClick={() => document.getElementById('inbox-img').click()} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/5 text-slate-300 hover:text-emerald-500 transition-all text-xs font-bold">
-                                           <ImageSquare size={16} />
-                                           Image
+                                        <button type="button" onClick={() => document.getElementById('inbox-img').click()} className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-white/5 text-[#d1d7db] transition-all text-[14px] font-medium">
+                                           <div className="w-8 h-8 rounded-full bg-[#bf59cf] flex items-center justify-center text-white"><ImageSquare size={18} weight="fill" /></div>
+                                           Photos & Videos
                                         </button>
-                                        <button type="button" onClick={() => document.getElementById('inbox-vid').click()} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/5 text-slate-300 hover:text-blue-400 transition-all text-xs font-bold">
-                                           <VideoCamera size={16} />
-                                           Video
-                                        </button>
-                                        <button type="button" onClick={() => document.getElementById('inbox-doc').click()} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/5 text-slate-300 hover:text-amber-400 transition-all text-xs font-bold">
-                                           <FileText size={16} />
+                                        <button type="button" onClick={() => document.getElementById('inbox-doc').click()} className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-white/5 text-[#d1d7db] transition-all text-[14px] font-medium">
+                                           <div className="w-8 h-8 rounded-full bg-[#7f66ff] flex items-center justify-center text-white"><FileText size={18} weight="fill" /></div>
                                            Document
                                         </button>
-
-                                        <input id="inbox-img" type="file" className="hidden" accept="image/*" onChange={(e) => handleSelectAttachment(e.target.files[0], 'image')} />
-                                        <input id="inbox-vid" type="file" className="hidden" accept="video/*" onChange={(e) => handleSelectAttachment(e.target.files[0], 'video')} />
+                                        <input id="inbox-img" type="file" className="hidden" accept="image/*,video/*" onChange={(e) => handleSelectAttachment(e.target.files[0], 'image')} />
                                         <input id="inbox-doc" type="file" className="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx" onChange={(e) => handleSelectAttachment(e.target.files[0], 'document')} />
                                      </motion.div>
                                   )}
                                </AnimatePresence>
 
-                               <AnimatePresence>
-                                  {pendingAttachment && (
-                                     <motion.div 
-                                       initial={{ opacity: 0, scale: 0.9, y: 10 }}
-                                       animate={{ opacity: 1, scale: 1, y: 0 }}
-                                       exit={{ opacity: 0, scale: 0.9, y: 10 }}
-                                       className="mx-2 mb-4 p-3 bg-bg-surface border border-border-dim rounded-2xl flex items-center gap-4 relative group"
-                                     >
-                                        <div className="w-12 h-12 rounded-lg bg-black/20 overflow-hidden flex items-center justify-center border border-white/5">
-                                           {pendingAttachment.previewUrl ? (
-                                              <img src={pendingAttachment.previewUrl} className="w-full h-full object-cover" />
-                                           ) : (
-                                              <div className="text-emerald-500"><FileText size={24} /></div>
-                                           )}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                           <p className="text-xs font-bold text-white truncate">{pendingAttachment.file.name}</p>
-                                           <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">{pendingAttachment.type}</p>
-                                        </div>
-                                        <button type="button" onClick={() => setPendingAttachment(null)} className="p-2 hover:bg-white/5 text-slate-500 hover:text-red-500 rounded-full transition-all">
-                                           <X size={16} />
-                                        </button>
-                                     </motion.div>
-                                  )}
-                               </AnimatePresence>
-
-                               <div className="flex items-center gap-2">
-                                  <button 
-                                    type="button" 
-                                    onClick={() => setShowAttachmentMenu(!showAttachmentMenu)}
-                                    className={cn(
-                                       "p-2.5 rounded-xl border transition-all",
-                                       showAttachmentMenu ? "bg-emerald-500 text-black border-emerald-500 shadow-lg shadow-emerald-500/20" : "bg-white/5 border-border-dim text-slate-400 hover:text-emerald-500"
-                                    )}
-                                  >
-                                     <Paperclip size={18} weight={showAttachmentMenu ? "bold" : "regular"} />
-                                  </button>
-                                  <textarea value={replyText} onChange={e => { setReplyText(e.target.value); if(showAttachmentMenu) setShowAttachmentMenu(false); }} placeholder="Type a message..." className="flex-1 bg-bg-base border border-border-dim rounded-2xl p-3 lg:p-4 text-[13px] font-medium text-white outline-none focus:border-emerald-500/30 resize-none min-h-[48px] max-h-32 transition-all" onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendReply(e); } }} />
-                                  <button type="submit" disabled={isSendingReply || (!replyText.trim() && !pendingAttachment)} className="h-12 w-12 lg:h-14 lg:w-14 flex items-center justify-center bg-emerald-500 text-black rounded-2xl transition-all shadow-lg shadow-emerald-500/10 disabled:opacity-50">
-                                     {isSendingReply ? <ArrowsClockwise size={18} className="animate-spin" /> : <PaperPlaneTilt size={20} weight="bold" />}
-                                  </button>
-                               </div>
+                               <textarea 
+                                  value={replyText} 
+                                  onChange={e => { setReplyText(e.target.value); if(showAttachmentMenu) setShowAttachmentMenu(false); }} 
+                                  placeholder="Type a message" 
+                                  className="flex-1 bg-[#2a3942] border-none rounded-lg p-2.5 px-4 text-[15px] font-medium text-white outline-none placeholder:text-slate-500 resize-none min-h-[42px] max-h-32 transition-all" 
+                                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendReply(e); } }} 
+                               />
+                               
+                               <button type="submit" disabled={isSendingReply || (!replyText.trim() && !pendingAttachment)} className="p-2 text-slate-500 hover:text-emerald-500 disabled:opacity-30 transition-colors">
+                                  {isSendingReply ? <ArrowsClockwise size={24} className="animate-spin" /> : <PaperPlaneTilt size={24} weight="fill" />}
+                               </button>
                             </form>
                          </>
                       ) : (

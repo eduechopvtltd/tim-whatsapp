@@ -8,7 +8,12 @@
   --color-bg-base: #0a0a0a;
   --color-bg-surface: #121212;
   --color-accent-emerald: #10b981;
-  --color-border-dim: rgba(255, 255, 255, 0.06);
+  --wa-incoming: #202c33;
+  --wa-outgoing: #005c4b;
+  --wa-chat-bg: #0b141a;
+  --wa-text: #e9edef;
+  --wa-text-dim: #8696a0;
+  --color-border-dim: rgba(255, 255, 255, 0.05);
 }
 
 @layer base {
@@ -51,7 +56,68 @@
 @layer utilities {
   /* Clean header for standard sections */
   .section-header {
-    @apply flex items-center gap-4 pb-6 border-b border-border-dim mb-6;
+    @apply flex items-center justify-between border-b border-border-dim pb-4 mb-6;
+  }
+
+  /* WhatsApp Specifics */
+  .wa-doodle {
+    background-color: var(--wa-chat-bg);
+    background-image: url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png");
+    background-blend-mode: overlay;
+    opacity: 0.06;
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  .chat-bubble {
+    position: relative;
+    max-width: 65%;
+    padding: 6px 12px 10px 12px;
+    border-radius: 8px;
+    box-shadow: 0 1px 0.5px rgba(0,0,0,0.13);
+  }
+
+  .chat-bubble-incoming {
+    background-color: var(--wa-incoming);
+    color: var(--wa-text);
+    border-top-left-radius: 0;
+  }
+
+  .chat-bubble-incoming::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -8px;
+    width: 10px;
+    height: 12px;
+    background-color: var(--wa-incoming);
+    clip-path: polygon(100% 0, 0 0, 100% 100%);
+  }
+
+  .chat-bubble-outgoing {
+    background-color: var(--wa-outgoing);
+    color: var(--wa-text);
+    border-top-right-radius: 0;
+  }
+
+  .chat-bubble-outgoing::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: -8px;
+    width: 10px;
+    height: 12px;
+    background-color: var(--wa-outgoing);
+    clip-path: polygon(0 0, 100% 0, 0 100%);
+  }
+
+  .chat-time {
+    font-size: 10px;
+    color: var(--wa-text-dim);
+    float: right;
+    margin-top: 4px;
+    margin-left: 8px;
   }
 
   /* Standard Thin scrollbar */
