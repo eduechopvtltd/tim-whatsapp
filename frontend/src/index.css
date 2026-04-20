@@ -8,7 +8,7 @@
   --color-bg-base: #0a0a0a;
   --color-bg-surface: #121212;
   --color-accent-emerald: #10b981;
-  --color-border-dim: rgba(255, 255, 255, 0.04);
+  --color-border-dim: rgba(255, 255, 255, 0.06);
 }
 
 @layer base {
@@ -24,38 +24,45 @@
 }
 
 @utility simple-card {
-  @apply bg-bg-surface border border-border-dim rounded-2xl p-6 transition-all duration-300;
-  &:hover {
-    @apply border-emerald-500/20 shadow-xl shadow-emerald-500/5;
-  }
+  @apply bg-bg-surface border border-border-dim rounded-xl p-6 transition-all duration-200;
+}
+
+@utility card-hover {
+  @apply hover:border-emerald-500/20 hover:shadow-lg hover:shadow-black/20;
 }
 
 @utility simple-btn {
-  @apply px-4 py-2 rounded-xl font-bold text-sm transition-all active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed;
+  @apply px-4 py-2 rounded-lg font-bold text-sm transition-all active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed;
 }
 
 @utility btn-primary {
-  @apply bg-accent-emerald text-black hover:bg-emerald-400 shadow-lg shadow-emerald-500/10;
+  @apply bg-accent-emerald text-black hover:bg-emerald-400;
 }
 
 @utility sidebar-item {
-  @apply flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium text-sm;
+  @apply flex items-center gap-3 px-4 py-3 rounded-lg transition-all font-medium text-sm;
+}
+
+/* Wizard/Step indicator utility */
+@utility step-number {
+  @apply w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-500 font-bold text-sm shrink-0;
 }
 
 @layer utilities {
-  .emerald-radial {
-    background: radial-gradient(circle at center, rgba(16, 185, 129, 0.05) 0%, rgba(10, 10, 10, 0) 70%);
+  /* Clean header for standard sections */
+  .section-header {
+    @apply flex items-center gap-4 pb-6 border-b border-border-dim mb-6;
   }
 
-  /* Thin scrollbar for minimalist feel */
+  /* Standard Thin scrollbar */
   ::-webkit-scrollbar {
-    width: 4px;
-    height: 4px;
+    width: 6px;
+    height: 6px;
   }
   ::-webkit-scrollbar-track {
     @apply bg-transparent;
   }
   ::-webkit-scrollbar-thumb {
-    @apply bg-white/5 rounded-full hover:bg-white/10;
+    @apply bg-white/10 rounded-full hover:bg-white/20;
   }
 }

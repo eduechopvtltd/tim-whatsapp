@@ -757,12 +757,15 @@ export default function App() {
   // ═══════════════════════════════════════════
   if (!token) {
     return (
-      <div className="min-h-screen bg-bg-base flex items-center justify-center p-4">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md simple-card p-8 space-y-6">
+       <div className="min-h-screen bg-bg-base flex items-center justify-center p-6 lg:p-10 relative overflow-hidden">
+        {/* Subtle background element */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-emerald-500/[0.02] rounded-full blur-[120px] pointer-events-none" />
+        
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-[400px] simple-card !p-10 space-y-8 relative z-10">
           <div className="text-center">
-            <div className="w-14 h-14 rounded-2xl bg-emerald-500 flex items-center justify-center text-black font-bold text-xl mx-auto mb-4 shadow-lg shadow-emerald-500/20">T</div>
-            <h1 className="text-2xl font-bold text-white">TIM Cloud</h1>
-            <p className="text-xs text-slate-500 mt-1 uppercase tracking-widest font-bold">Professional WhatsApp CRM</p>
+            <div className="w-16 h-16 rounded-2xl bg-emerald-500 flex items-center justify-center text-black font-extrabold text-2xl mx-auto mb-6 shadow-xl shadow-emerald-500/10">T</div>
+            <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">TIM Cloud</h1>
+            <p className="text-[10px] text-slate-500 mt-2 uppercase tracking-[0.2em] font-black">Professional WhatsApp CRM</p>
           </div>
 
           <form onSubmit={handleAuth} className="space-y-4">
@@ -876,7 +879,6 @@ export default function App() {
       </aside>
 
       <main className="flex-1 flex flex-col relative overflow-hidden w-full min-w-0">
-        <div className="absolute top-0 right-0 w-[600px] h-[600px] emerald-radial pointer-events-none -z-10" />
 
         <header className="h-16 lg:h-20 flex items-center justify-between px-4 lg:px-10 border-b border-border-dim shrink-0 bg-bg-base/50 backdrop-blur-md sticky top-0 z-30">
           <div className="flex items-center gap-3 lg:gap-4 min-w-0">
@@ -905,12 +907,12 @@ export default function App() {
 
               {/* ═══ HOME TAB ═══ */}
               {activeTab === 'home' && (
-                <motion.div key="home" {...PAGE_TRANSITION} className="space-y-6 lg:space-y-10 max-w-6xl">
-                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-6">
-                      <MetricCard label="Messages Sent" value={stats.totalSent} icon={PaperPlaneTilt} />
-                      <MetricCard label="Success Rate" value={`${stats.totalSent > 0 ? (stats.totalSent / (stats.totalSent + stats.totalFailed) * 100).toFixed(1) : 0}%`} icon={CheckCircle} color="text-emerald-500" />
-                      <MetricCard label="Campaigns" value={stats.totalCampaigns} icon={Database} />
-                   </div>
+                 <motion.div key="home" {...PAGE_TRANSITION} className="space-y-6 lg:space-y-10 max-w-6xl">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-6">
+                       <MetricCard label="Messages Sent" value={stats.totalSent} icon={PaperPlaneTilt} color="text-emerald-500" />
+                       <MetricCard label="Success Rate" value={`${stats.totalSent > 0 ? (stats.totalSent / (stats.totalSent + stats.totalFailed) * 100).toFixed(1) : 0}%`} icon={CheckCircle} color="text-emerald-500" />
+                       <MetricCard label="Active Campaigns" value={stats.totalCampaigns} icon={Database} color="text-emerald-500" />
+                    </div>
                    <div className="flex flex-col md:flex-row gap-6 lg:gap-8">
                       <div className="flex-1 space-y-4">
                          <h3 className="text-xs lg:text-sm font-bold text-slate-500 uppercase tracking-widest">Weekly Activity</h3>
@@ -957,11 +959,14 @@ export default function App() {
                    <div className="flex-1 space-y-6 lg:space-y-8 min-w-0">
                       
                       {/* 1. UPLOAD CONTACTS */}
-                      <div className="simple-card space-y-6">
-                         <div className="flex items-center gap-3 lg:gap-4 border-b border-border-dim pb-4 lg:pb-6">
-                            <div className="w-9 h-9 lg:w-10 lg:h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500"><UploadSimple size={18} weight="bold" /></div>
-                            <div><h3 className="text-base lg:text-lg font-bold">1. Upload Contacts</h3><p className="text-[10px] lg:text-xs text-slate-500">Pick a CSV file with your phone numbers.</p></div>
-                         </div>
+                       <div className="simple-card space-y-6">
+                          <div className="section-header">
+                             <div className="step-number">1</div>
+                             <div>
+                                <h3 className="text-base lg:text-lg font-bold">Upload Contacts</h3>
+                                <p className="text-[10px] lg:text-xs text-slate-500">Pick a CSV file with your phone numbers.</p>
+                             </div>
+                          </div>
                          <label className="block group cursor-pointer">
                             <div className={cn("h-32 lg:h-40 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-2 transition-all", file ? "border-emerald-500/30 bg-emerald-500/5" : "border-border-dim bg-white/[0.01] hover:border-emerald-500/20")}>
                                {file ? (
@@ -985,11 +990,14 @@ export default function App() {
                       </div>
 
                       {/* 2. CHOOSE MESSAGE */}
-                      <div className="simple-card space-y-6">
-                         <div className="flex items-center gap-3 lg:gap-4 border-b border-border-dim pb-4 lg:pb-6">
-                            <div className="w-9 h-9 lg:w-10 lg:h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500"><PaperPlaneTilt size={18} weight="bold" /></div>
-                            <div className="flex-1"><h3 className="text-base lg:text-lg font-bold">2. Choose Message</h3><p className="text-[10px] lg:text-xs text-slate-500">Pick a template or write a custom message.</p></div>
-                         </div>
+                       <div className="simple-card space-y-6">
+                          <div className="section-header">
+                             <div className="step-number">2</div>
+                             <div className="flex-1">
+                                <h3 className="text-base lg:text-lg font-bold">Choose Message</h3>
+                                <p className="text-[10px] lg:text-xs text-slate-500">Pick a template or write a custom message.</p>
+                             </div>
+                          </div>
                          <div className="space-y-6">
                              <div className="flex gap-2 p-1 bg-white/[0.02] border border-border-dim rounded-xl w-fit">
                                 <button onClick={() => setMessageType('template')} className={cn("px-6 lg:px-8 py-2.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all", messageType === 'template' ? "bg-emerald-500 text-black shadow-lg" : "text-slate-500 hover:text-slate-300")}>Template</button>
@@ -1308,24 +1316,24 @@ export default function App() {
                            const total = job.totalContacts || job.total || 0;
                            const rate = total > 0 ? (sent / total * 100).toFixed(0) : 0;
                            return (
-                             <div key={job.id || job._id} onClick={() => handleExpandHistory(job)} className="simple-card group cursor-pointer hover:border-emerald-500/20 transition-all">
+                             <div key={job.id || job._id} onClick={() => handleExpandHistory(job)} className="simple-card card-hover group cursor-pointer border-border-dim transition-all">
                                 <div className="flex justify-between items-start mb-4">
-                                   <div className="p-2.5 bg-white/5 rounded-xl text-slate-500 group-hover:text-emerald-500 transition-colors"><Database size={18} /></div>
+                                   <div className="p-2.5 bg-white/5 rounded-xl text-slate-500 group-hover:text-emerald-500 transition-colors border border-transparent group-hover:border-emerald-500/10"><Database size={18} /></div>
                                    <div className="text-right">
                                       <span className="text-[10px] font-bold text-slate-600">#{String(job.id || job._id || '').slice(-6)}</span>
-                                      <p className="text-[9px] text-slate-500 font-bold uppercase mt-1">{job.status || 'Completed'}</p>
+                                      <p className={cn("text-[9px] font-black uppercase mt-1", job.status === 'Completed' ? "text-emerald-500" : "text-slate-500")}>{job.status || 'Completed'}</p>
                                    </div>
                                 </div>
-                                <h4 className="text-xs lg:text-sm font-bold text-white mb-1 truncate">{job.name || job.templateName || 'Campaign'}</h4>
-                                <p className="text-[10px] text-slate-500 mb-6">{new Date(job.timestamp || job.createdAt || Date.now()).toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'})}</p>
+                                <h4 className="text-sm font-bold text-white mb-1 truncate">{job.name || job.templateName || 'Campaign'}</h4>
+                                <p className="text-[11px] text-slate-500 mb-6">{new Date(job.timestamp || job.createdAt || Date.now()).toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'})}</p>
                                 <div className="grid grid-cols-3 gap-2 mb-6">
-                                   <div className="text-center p-2 rounded-lg bg-white/[0.02] border border-border-dim"><p className="text-[8px] text-slate-600 font-bold uppercase mb-1">Sent</p><p className="text-xs font-bold text-emerald-500">{sent}</p></div>
-                                   <div className="text-center p-2 rounded-lg bg-white/[0.02] border border-border-dim"><p className="text-[8px] text-slate-600 font-bold uppercase mb-1">Fail</p><p className="text-xs font-bold text-red-500">{failed}</p></div>
-                                   <div className="text-center p-2 rounded-lg bg-white/[0.02] border border-border-dim"><p className="text-[8px] text-slate-600 font-bold uppercase mb-1">Total</p><p className="text-xs font-bold text-white">{total}</p></div>
+                                   <div className="text-center p-2 rounded-lg bg-white/[0.04] border border-border-dim"><p className="text-[8px] text-slate-600 font-bold uppercase mb-1">Sent</p><p className="text-xs font-bold text-emerald-500">{sent}</p></div>
+                                   <div className="text-center p-2 rounded-lg bg-white/[0.04] border border-border-dim"><p className="text-[8px] text-slate-600 font-bold uppercase mb-1">Fail</p><p className="text-xs font-bold text-red-500">{failed}</p></div>
+                                   <div className="text-center p-2 rounded-lg bg-white/[0.04] border border-border-dim"><p className="text-[8px] text-slate-600 font-bold uppercase mb-1">Total</p><p className="text-xs font-bold text-white">{total}</p></div>
                                 </div>
                                 <div className="pt-4 border-t border-border-dim flex justify-between items-center">
-                                   <div className="flex items-center gap-2"><div className="w-16 h-1 bg-white/5 rounded-full overflow-hidden"><div className="h-full bg-emerald-500" style={{ width: `${rate}%` }} /></div><span className="text-[10px] font-bold text-emerald-500">{rate}%</span></div>
-                                   <button onClick={(e) => { e.stopPropagation(); handleExportHistoryCSV(job); }} className="p-2 hover:bg-emerald-500/10 rounded-lg text-slate-500 hover:text-emerald-500 transition-all"><DownloadSimple size={16} /></button>
+                                   <div className="flex items-center gap-2"><div className="w-16 h-1.5 bg-white/5 rounded-full overflow-hidden"><div className="h-full bg-emerald-500" style={{ width: `${rate}%` }} /></div><span className="text-[10px] font-bold text-emerald-500">{rate}%</span></div>
+                                   <button onClick={(e) => { e.stopPropagation(); handleExportHistoryCSV(job); }} className="p-2 hover:bg-emerald-500/10 rounded-lg text-slate-500 hover:text-emerald-500 transition-all"><DownloadSimple size={18} /></button>
                                 </div>
                              </div>
                            );
@@ -1401,7 +1409,7 @@ export default function App() {
                                {activeChatHistory.map((msg, i) => (
                                   <div key={i} className={cn("max-w-[85%] sm:max-w-[70%] flex flex-col", (msg.from === 'me' || msg.from === 'bot') ? "self-end items-end" : "self-start items-start")}>
                                      <div className={cn(
-                                       "px-4 py-3 rounded-2xl text-[13px] font-medium leading-relaxed shadow-sm whitespace-pre-wrap break-words overflow-hidden", 
+                                       "px-4 py-2.5 rounded-xl text-[13px] font-medium leading-relaxed shadow-sm whitespace-pre-wrap break-words overflow-hidden", 
                                        (msg.from === 'me' || msg.from === 'bot') ? "bg-emerald-500 text-black rounded-tr-none" : "bg-white/5 text-slate-200 border border-border-dim rounded-tl-none")}>
                                         
                                         {/* MEDIA CONTENT */}
@@ -1448,21 +1456,21 @@ export default function App() {
                                <AnimatePresence>
                                   {showAttachmentMenu && (
                                      <motion.div 
-                                       initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                                       initial={{ opacity: 0, scale: 0.95, y: 5 }}
                                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                                       exit={{ opacity: 0, scale: 0.9, y: 10 }}
-                                       className="absolute bottom-full left-6 mb-4 bg-bg-surface border border-border-dim rounded-2xl shadow-2xl p-2 flex flex-col gap-1 z-50 min-w-[140px]"
+                                       exit={{ opacity: 0, scale: 0.95, y: 5 }}
+                                       className="absolute bottom-full left-6 mb-4 bg-bg-surface border border-border-dim rounded-xl shadow-2xl p-1.5 flex flex-col gap-0.5 z-50 min-w-[150px]"
                                      >
-                                        <button type="button" onClick={() => document.getElementById('inbox-img').click()} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-slate-300 hover:text-emerald-500 transition-all text-xs font-bold">
-                                           <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-500"><ImageSquare size={18} /></div>
+                                        <button type="button" onClick={() => document.getElementById('inbox-img').click()} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/5 text-slate-300 hover:text-emerald-500 transition-all text-xs font-bold">
+                                           <ImageSquare size={16} />
                                            Image
                                         </button>
-                                        <button type="button" onClick={() => document.getElementById('inbox-vid').click()} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-slate-300 hover:text-emerald-500 transition-all text-xs font-bold">
-                                           <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500"><VideoCamera size={18} /></div>
+                                        <button type="button" onClick={() => document.getElementById('inbox-vid').click()} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/5 text-slate-300 hover:text-blue-400 transition-all text-xs font-bold">
+                                           <VideoCamera size={16} />
                                            Video
                                         </button>
-                                        <button type="button" onClick={() => document.getElementById('inbox-doc').click()} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-slate-300 hover:text-emerald-500 transition-all text-xs font-bold">
-                                           <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-500"><FileText size={18} /></div>
+                                        <button type="button" onClick={() => document.getElementById('inbox-doc').click()} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/5 text-slate-300 hover:text-amber-400 transition-all text-xs font-bold">
+                                           <FileText size={16} />
                                            Document
                                         </button>
 
@@ -1532,13 +1540,13 @@ export default function App() {
               {activeTab === 'settings' && (
                 <motion.div key="settings" {...PAGE_TRANSITION} className="max-w-2xl mx-auto py-4 lg:py-6">
                    <div className="simple-card space-y-8 lg:space-y-10 p-6 lg:p-8">
-                      <div className="flex items-center justify-between border-b border-border-dim pb-4 lg:pb-6">
-                          <div className="flex items-center gap-3 lg:gap-4">
-                             <div className="w-9 h-9 lg:w-10 lg:h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500"><Gear size={18} weight="bold" /></div>
-                             <div><h3 className="text-base lg:text-lg font-bold">API Settings</h3><p className="text-[10px] lg:text-xs text-slate-500">Connect your Meta account. Private to your account.</p></div>
+                      <div className="section-header !mb-8">
+                          <div className="flex items-center gap-3 lg:gap-4 flex-1">
+                             <div className="step-number"><Gear size={18} weight="bold" /></div>
+                             <div><h3 className="text-base lg:text-lg font-bold">API Configuration</h3><p className="text-[10px] lg:text-xs text-slate-500">Connect your Meta account credentials.</p></div>
                           </div>
                           <button type="button" onClick={() => setRevealCredentials(!revealCredentials)} className={cn("flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all text-[10px] font-bold uppercase tracking-widest", revealCredentials ? "bg-amber-500/10 text-amber-500 border-amber-500/20" : "bg-white/5 text-slate-400 border-border-dim hover:text-white")}>
-                             {revealCredentials ? <><EyeSlash size={14} weight="bold" /> Hide IDs</> : <><Eye size={14} weight="bold" /> Show IDs</>}
+                             {revealCredentials ? <><EyeSlash size={14} weight="bold" /> Mask</> : <><Eye size={14} weight="bold" /> Reveal</>}
                           </button>
                       </div>
                       <form className="space-y-6 lg:space-y-8" onSubmit={async e => {
@@ -1781,13 +1789,25 @@ function TemplatePreview({ template, mapping, csvHeaders, uploadedMediaId, local
 
 function SidebarLink({ active, onClick, icon: Icon, label, badge }) {
   return (
-    <button onClick={onClick} className={cn("w-full sidebar-item group relative", active ? "bg-emerald-500 text-black shadow-lg shadow-emerald-500/10" : "text-slate-500 hover:text-white hover:bg-white/[0.03]")}>
-      <Icon size={18} weight={active ? "fill" : "bold"} className={cn("transition-transform group-hover:scale-110", active ? "text-black" : "text-slate-600 group-hover:text-emerald-500")} />
+    <button 
+      onClick={onClick} 
+      className={cn(
+        "w-full sidebar-item group relative transition-all duration-200", 
+        active 
+          ? "bg-emerald-500/10 text-emerald-500 border-l-2 border-emerald-500 !rounded-l-none" 
+          : "text-slate-500 hover:text-white hover:bg-white/[0.03]"
+      )}
+    >
+      <Icon 
+        size={18} 
+        weight={active ? "fill" : "bold"} 
+        className={cn("transition-transform group-hover:scale-105", active ? "text-emerald-500" : "text-slate-600 group-hover:text-emerald-500")} 
+      />
       <span className="font-bold flex-1 text-left">{label}</span>
       {badge && (
         <span className={cn(
-          "px-1.5 py-0.5 rounded-full text-[9px] font-black min-w-[18px] text-center shadow-sm",
-          active ? "bg-black/20 text-black" : "bg-emerald-500 text-black border border-emerald-500/20 shadow-emerald-500/10"
+          "px-1.5 py-0.5 rounded-full text-[9px] font-black min-w-[18px] text-center",
+          active ? "bg-emerald-500/20 text-emerald-500" : "bg-white/10 text-slate-400"
         )}>
           {badge}
         </span>
@@ -1798,16 +1818,22 @@ function SidebarLink({ active, onClick, icon: Icon, label, badge }) {
 
 function MetricCard({ label, value, icon: Icon, color = "text-white" }) {
   return (
-    <div className="simple-card flex flex-col justify-between h-28 lg:h-36 relative overflow-hidden group">
-       <div className="absolute top-0 right-0 p-4 lg:p-6 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity"><Icon size={60} weight="fill" /></div>
+    <div className="simple-card card-hover flex flex-col justify-between h-28 lg:h-36 relative overflow-hidden group">
+       <div className="absolute top-0 right-0 p-4 lg:p-6 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity">
+          <Icon size={64} weight="fill" />
+       </div>
        <div className="flex justify-between items-start relative z-10">
           <div className="space-y-1">
-             <p className="text-[9px] lg:text-[10px] font-bold text-slate-500 uppercase tracking-widest">{label}</p>
-             <h3 className={cn("text-2xl lg:text-3xl font-bold tracking-tight", color)}>{value}</h3>
+             <p className="text-[9px] lg:text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-none">{label}</p>
+             <h3 className={cn("text-2xl lg:text-3xl font-bold tracking-tight mt-1", color)}>{value}</h3>
           </div>
-          <div className={cn("p-2 rounded-lg bg-white/5", color)}><Icon size={16} weight="bold" /></div>
+          <div className={cn("w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center", color)}>
+            <Icon size={16} weight="bold" />
+          </div>
        </div>
-       <div className="relative z-10"><div className="w-full h-1 bg-white/5 rounded-full overflow-hidden"><div className="w-2/3 h-full bg-emerald-500/20" /></div></div>
+       <div className="mt-auto relative z-10 w-full h-1 bg-white/5 rounded-full overflow-hidden">
+         <div className="h-full bg-emerald-500/10" style={{ width: '40%' }} />
+       </div>
     </div>
   );
 }
