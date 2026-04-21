@@ -41,7 +41,8 @@ import {
   DotsThreeVertical,
   Smiley,
   Check,
-  Lock
+  Lock,
+  Trash
 } from "@phosphor-icons/react";
 import { motion, AnimatePresence } from 'framer-motion';
 import { clsx } from 'clsx';
@@ -131,6 +132,9 @@ export default function App() {
   const [emailConfig, setEmailConfig] = useState({ enabled: false, smtpHost: '', smtpPort: 587, smtpUser: '', smtpPass: '', notifyEmail: '' });
   const [isSavingEmail, setIsSavingEmail] = useState(false);
   const [isTestingEmail, setIsTestingEmail] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [isDeleteAccountModalOpen, setIsDeleteAccountModalOpen] = useState(false);
+  const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
   const messagesEndRef = useRef(null);
 
   // ═══════════ AUTH FUNCTIONS ═══════════
@@ -190,6 +194,29 @@ export default function App() {
     setToken(''); setUser(null);
     localStorage.removeItem('tim_token');
     localStorage.removeItem('tim_user');
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmationText !== 'DELETE') return;
+    setIsDeletingAccount(true);
+    try {
+      const res = await fetchWithAuth(`${API_BASE}/api/account/nuclear-reset`, { method: 'DELETE' });
+      if (res.ok) {
+        logout();
+        setIsDeleteAccountModalOpen(false);
+        setDeleteConfirmationText('');
+        // Force refresh to clear any cached states
+        window.location.reload();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Failed to delete account');
+      }
+    } catch (e) {
+      console.error('[DELETE ERROR]', e);
+      alert('Request failed. Check your network or server logs.');
+    } finally {
+      setIsDeletingAccount(false);
+    }
   };
 
   // ═══════════ REAL-TIME CORE (SOCKET.IO) ═══════════
@@ -1616,12 +1643,56 @@ export default function App() {
                                             isMe ? "chat-bubble-outgoing" : "chat-bubble-incoming"
                                           )}>
                                              {/* MEDIA CONTENT */}
-                                             {msg.type === 'image' && (
-                                                <div className="mb-2 -mx-1 -mt-1 rounded-lg overflow-hidden bg-black/10">
-                                                   {msg.mediaUrl ? (
-                                                      <img src={msg.mediaUrl} alt="msg" className="max-w-full h-auto object-cover max-h-64" />
+                                             {['image', 'video', 'document'].includes(msg.type) && (
+                                                <div className={cn(
+                                                   "mb-2 -mx-1 -mt-1 rounded-lg overflow-hidden bg-black/10 transition-all group/media",
+                                                   msg.type === 'document' ? "p-3 bg-white/5 border border-white/5 border-b-border-dim/20" : ""
+                                                )}>
+                                                   {msg.type === 'image' && (msg.mediaId || msg.mediaUrl) ? (
+                                                      <div className="relative">
+                                                         <img 
+                                                            src={msg.mediaId ? `${API_BASE}/api/media/${msg.mediaId}` : msg.mediaUrl} 
+                                                            alt="msg" 
+                                                            className="max-w-full h-auto object-cover max-h-64 cursor-pointer hover:opacity-90 transition-opacity"
+                                                            onClick={() => window.open(msg.mediaId ? `${API_BASE}/api/media/${msg.mediaId}` : msg.mediaUrl, '_blank')}
+                                                         />
+                                                         <a 
+                                                            href={msg.mediaId ? `${API_BASE}/api/media/${msg.mediaId}` : msg.mediaUrl} 
+                                                            download={`image_${msg.id}.jpg`}
+                                                            className="absolute bottom-2 right-2 p-2 bg-black/60 backdrop-blur-md border border-white/10 text-white rounded-lg opacity-0 group-hover/media:opacity-100 transition-all hover:bg-emerald-500 hover:text-black"
+                                                         >
+                                                            <DownloadSimple size={16} weight="bold" />
+                                                         </a>
+                                                      </div>
+                                                   ) : msg.type === 'video' && msg.mediaId ? (
+                                                      <video controls className="max-w-full h-auto bg-black rounded-lg">
+                                                         <source src={`${API_BASE}/api/media/${msg.mediaId}`} type="video/mp4" />
+                                                         Your browser does not support the video tag.
+                                                      </video>
+                                                   ) : msg.type === 'document' && msg.mediaId ? (
+                                                      <div className="flex items-center justify-between gap-4 py-1">
+                                                         <div className="flex items-center gap-3 overflow-hidden">
+                                                            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500 shrink-0 border border-emerald-500/10">
+                                                               <FileText size={20} weight="fill" />
+                                                            </div>
+                                                            <div className="min-w-0">
+                                                               <p className="text-xs font-bold text-white truncate pr-2" title={msg.filename}>{msg.filename || 'Document'}</p>
+                                                               <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest mt-0.5">Ready to download</p>
+                                                            </div>
+                                                         </div>
+                                                         <a 
+                                                            href={`${API_BASE}/api/media/${msg.mediaId}`} 
+                                                            download={msg.filename || 'document'} 
+                                                            className="p-2.5 bg-emerald-500 text-black rounded-xl hover:bg-emerald-400 transition-all shadow-lg shadow-emerald-500/20 active:scale-95"
+                                                         >
+                                                            <DownloadSimple size={18} weight="bold" />
+                                                         </a>
+                                                      </div>
                                                    ) : (
-                                                      <div className="p-4 flex items-center gap-2 text-[10px] font-bold opacity-50"><ImageSquare size={16} /> Image Received</div>
+                                                      <div className="p-4 flex items-center gap-2 text-[10px] font-bold opacity-50 uppercase">
+                                                         {msg.type === 'image' ? <ImageSquare size={16} /> : msg.type === 'video' ? <Video size={16} /> : <FileText size={16} />}
+                                                         {msg.type} Received
+                                                      </div>
                                                    )}
                                                 </div>
                                              )}
@@ -1822,6 +1893,34 @@ export default function App() {
                                 {isRegistering ? 'Processing...' : <><ShieldCheck size={18} weight="bold" /> Complete Registration</>}
                              </button>
                           </div>
+                       </div>
+                    </div>
+                    
+                    {/* 4. DANGER ZONE */}
+                    <div className="p-6 lg:p-10 space-y-8 rounded-3xl border border-red-500/20 bg-red-500/[0.02]">
+                       <div className="flex items-center justify-between border-b border-red-500/10 pb-6">
+                          <div className="flex items-center gap-4">
+                             <div className="w-10 h-10 rounded-2xl bg-red-500/10 flex items-center justify-center text-red-500 border border-red-500/10">
+                                <Trash size={22} weight="bold" />
+                             </div>
+                             <div>
+                                <h3 className="text-sm font-bold text-red-500 uppercase tracking-widest">Danger Zone</h3>
+                                <p className="text-[10px] text-slate-500 font-medium">Irreversible account actions</p>
+                             </div>
+                          </div>
+                       </div>
+                       
+                       <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+                          <div className="space-y-1 text-left">
+                             <h4 className="text-sm font-bold text-white">Delete Account & Data</h4>
+                             <p className="text-xs text-slate-500 max-w-md">Permanently wipe all campaigns, chats, configuration, and delete your account credentials from our database.</p>
+                          </div>
+                          <button 
+                             onClick={() => setIsDeleteAccountModalOpen(true)}
+                             className="px-6 h-12 rounded-xl bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white border border-red-500/20 transition-all font-bold text-xs uppercase tracking-widest flex items-center gap-2 shrink-0"
+                          >
+                             <Trash size={18} weight="bold" /> Delete Everything
+                          </button>
                        </div>
                     </div>
                  </motion.div>

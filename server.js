@@ -1245,6 +1245,32 @@ app.post('/api/settings/email/test', authenticateToken, async (req, res) => {
   }
 });
 
+// Delete Account and All Associated Data (Nuclear Option)
+app.delete('/api/account/nuclear-reset', authenticateToken, async (req, res) => {
+    const userId = req.user.id;
+    console.log(`[NUCLEAR] Reset requested for user ${userId} (${req.user.username})`);
+    
+    try {
+        // 1. Delete all behavioral data
+        // Using Promise.all for faster execution
+        await Promise.all([
+            Campaign.deleteMany({ userId }),
+            Chat.deleteMany({ userId }),
+            GlobalState.deleteMany({ userId }),
+            WamidMapping.deleteMany({ userId })
+        ]);
+        
+        // 2. Delete the user record
+        await User.findByIdAndDelete(userId);
+        
+        console.log(`[NUCLEAR] User ${userId} and all associated data successfully purged from database.`);
+        res.json({ success: true, message: 'Account and data permanently deleted.' });
+    } catch (err) {
+        console.error('[NUCLEAR ERROR] Purge failed:', err);
+        res.status(500).json({ error: 'Critical failure during account data purge. Please contact support.' });
+    }
+});
+
 // Manual Phone Registration with Meta (User Scoped)
 app.post('/api/register', authenticateToken, async (req, res) => {
   const { pin } = req.body;
@@ -1421,8 +1447,8 @@ app.post('/webhook', async (req, res) => {
         }
         if (!profileName) profileName = from; // Fallback to phone number
         
-        let text = '[Non-text message]';
-        const msgType = msg.type;
+        let mediaId = null;
+        let filename = null;
         
         switch (msgType) {
             case 'text':
@@ -1430,28 +1456,32 @@ app.post('/webhook', async (req, res) => {
                 break;
             case 'image':
                 text = msg.image?.caption || '📷 Image';
+                mediaId = msg.image?.id;
                 break;
             case 'video':
                 text = msg.video?.caption || '🎥 Video';
+                mediaId = msg.video?.id;
                 break;
             case 'document':
-                text = msg.document?.filename || '📄 Document';
+                text = msg.document?.caption || msg.document?.filename || '📄 Document';
+                mediaId = msg.document?.id;
+                filename = msg.document?.filename;
                 break;
             case 'audio':
                 text = '🔊 Audio message';
+                mediaId = msg.audio?.id;
                 break;
             case 'sticker':
                 text = '🏷️ Sticker';
+                mediaId = msg.sticker?.id;
                 break;
             case 'location':
                 text = '📍 Location';
                 break;
             case 'button':
-                // For template button replies, Meta sends button.text
                 text = msg.button?.text || 'Interactive Reply';
                 break;
             case 'interactive':
-                // For interactive buttons or list clicks
                 text = msg.interactive?.button_reply?.title || 
                        msg.interactive?.list_reply?.title || 
                        '[Interactive]';
@@ -1468,7 +1498,9 @@ app.post('/webhook', async (req, res) => {
           name: profileName,
           text: text,
           timestamp: Date.now(),
-          type: msg.type
+          type: msg.type,
+          mediaId,
+          filename
         };
 
         // PERSIST TO CLOUD (Scoped to User)
@@ -1515,6 +1547,47 @@ app.post('/webhook', async (req, res) => {
 // --- CHAT SYSTEM (User Scoped) ---
 
 // List all chats for user
+// --- MEDIA PROXY ---
+// Fetches authenticated media from Meta and pipes it to the client
+app.get('/api/media/:mediaId', authenticateToken, async (req, res) => {
+    try {
+        const { mediaId } = req.params;
+        const user = await User.findById(req.user.id);
+        if (!user || !user.config.token) {
+            return res.status(401).json({ error: 'WhatsApp config missing' });
+        }
+
+        // 1. Get Media URL from Meta
+        const metaResponse = await axios.get(`https://graph.facebook.com/v21.0/${mediaId}`, {
+            headers: { 'Authorization': `Bearer ${user.config.token}` }
+        });
+
+        const { url, mime_type } = metaResponse.data;
+        if (!url) throw new Error('No media URL returned from Meta');
+
+        // 2. Fetch binary content from the temporary URL using the same token
+        const mediaStream = await axios.get(url, {
+            headers: { 'Authorization': `Bearer ${user.config.token}` },
+            responseType: 'stream'
+        });
+
+        // Forward headers from Meta or set accordingly
+        res.setHeader('Content-Type', mime_type || 'application/octet-stream');
+        
+        // If it's a document (not image/video), suggest as attachment
+        const isPreviewable = mime_type && (mime_type.startsWith('image/') || mime_type.startsWith('video/'));
+        if (!isPreviewable) {
+            res.setHeader('Content-Disposition', 'attachment');
+        }
+
+        // Pipe the stream directly to the client
+        mediaStream.data.pipe(res);
+    } catch (err) {
+        console.error('[Media Proxy Error]', err.response?.data || err.message);
+        res.status(500).json({ error: 'Failed to fetch media from Meta' });
+    }
+});
+
 app.get('/api/chats', authenticateToken, async (req, res) => {
   try {
     // Only show chats where there is at least one incoming message from the customer
