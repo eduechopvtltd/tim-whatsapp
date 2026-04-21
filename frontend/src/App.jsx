@@ -978,18 +978,17 @@ export default function App() {
 
               {/* ═══ SEND TAB ═══ */}
               {activeTab === 'send' && (
-                 <div key="send" className="max-w-6xl mx-auto flex flex-col md:flex-row gap-8 pb-20 items-start">
-                   {/* LEFT COLUMN: CONFIGURATION */}
-                    <motion.div {...PAGE_TRANSITION} className="flex-1 space-y-6 lg:space-y-8 min-w-0">
-                      
-                       {/* 1. UPLOAD CONTACTS */}
-                        <div className="simple-card space-y-4 lg:space-y-5">
-                           <div className="flex items-center gap-4 border-b border-border-dim pb-4 mb-4">
-                              <div>
-                                 <h3 className="text-base lg:text-lg font-bold">Upload Contacts</h3>
-                                 <p className="text-[10px] lg:text-xs text-slate-500">Pick a CSV file with your contacts.</p>
-                              </div>
-                           </div>
+                <div key="send" className="max-w-6xl mx-auto flex flex-col gap-8 pb-20">
+                   
+                   {/* SEGMENT 1: UPLOAD (FULL WIDTH) */}
+                   <motion.div {...PAGE_TRANSITION} className="w-full">
+                      <div className="simple-card space-y-4 lg:space-y-5">
+                         <div className="flex items-center gap-4 border-b border-border-dim pb-4 mb-4">
+                            <div>
+                               <h3 className="text-base lg:text-lg font-bold">Upload Contacts</h3>
+                               <p className="text-[10px] lg:text-xs text-slate-500">Pick a CSV file with your contacts.</p>
+                            </div>
+                         </div>
                          <label className="block group cursor-pointer">
                             <div className={cn("rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 transition-all", file ? "h-24 border-emerald-500/30 bg-emerald-500/5" : "h-32 border-border-dim bg-white/[0.01] hover:border-emerald-500/20")}>
                                {file ? (
@@ -1011,185 +1010,163 @@ export default function App() {
                            </div>
                          )}
                       </div>
-
-                      {/* 2. CHOOSE MESSAGE */}
-                       <div className="simple-card space-y-4 lg:space-y-5">
-                          <div className="flex items-center gap-4 border-b border-border-dim pb-4 mb-4">
-                             <div className="flex-1">
-                                <h3 className="text-base lg:text-lg font-bold">Choose Message</h3>
-                                <p className="text-[10px] lg:text-xs text-slate-500">Pick a template or write a custom message.</p>
-                             </div>
-                          </div>
-                         <div className="space-y-4">
-                             <div className="flex gap-2 p-1 bg-white/[0.02] border border-border-dim rounded-xl w-fit">
-                                <button onClick={() => setMessageType('template')} className={cn("px-6 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all", messageType === 'template' ? "bg-emerald-500 text-black shadow-lg" : "text-slate-500 hover:text-slate-300")}>Template</button>
-                                <button onClick={() => setMessageType('custom')} className={cn("px-6 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all", messageType === 'custom' ? "bg-emerald-500 text-black shadow-lg" : "text-slate-500 hover:text-slate-300")}>Custom</button>
-                             </div>
-                             
-                             {messageType === 'template' ? (
-                                <div className="space-y-5">
-                                   <div className="flex gap-2 items-end">
-                                      <div className="flex-1 space-y-1.5">
-                                         <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Template Name</label>
-                                         <div className="relative">
-                                            <select value={selectedTemplate} onChange={e => setSelectedTemplate(e.target.value)} className="w-full bg-bg-surface border border-border-dim rounded-xl p-3 text-xs font-bold text-white outline-none appearance-none focus:border-emerald-500/30 transition-all">
-                                               <option value="">-- Choose Template --</option>
-                                               {templates.map(t => <option key={t.name} value={t.name}>{t.name} ({t.language})</option>)}
-                                            </select>
-                                            <CaretDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-600 pointer-events-none" size={14} />
-                                         </div>
-                                      </div>
-                                      <button onClick={handleRefreshTemplates} disabled={refreshingTemplates} className={cn("simple-btn bg-white/5 border border-border-dim text-slate-400 hover:text-emerald-500 hover:border-emerald-500/20 h-11 px-3 mb-[1px]", refreshingTemplates && "animate-pulse")} title="Refresh templates">
-                                         <ArrowsClockwise size={18} className={refreshingTemplates ? "animate-spin" : ""} />
-                                      </button>
-                                   </div>
-
-                                   {/* ════════ HEADER SECTION ════════ */}
-                                   {headerInfo?.type && (
-                                     <div className="p-4 rounded-2xl bg-white/[0.01] border border-border-dim space-y-4">
-                                       <div className="flex items-center gap-2 mb-1">
-                                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Message Header ({headerInfo.type})</p>
-                                       </div>
-
-                                       {['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerInfo.type) ? (
-                                         <div className="space-y-4">
-                                            <div className="flex items-center gap-3">
-                                               <label className={cn("flex-1 flex items-center justify-center gap-2 p-3.5 rounded-xl border border-dashed transition-all cursor-pointer", uploadedMediaId ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-500" : "border-border-dim bg-white/[0.02] hover:border-emerald-500/20 text-slate-500")}>
-                                                  {isUploadingMedia ? <ArrowsClockwise size={16} className="animate-spin" /> : uploadedMediaId ? <CheckCircle size={16} weight="fill" /> : <Plus size={16} />}
-                                                  <span className="text-[10px] font-bold uppercase tracking-wider">{isUploadingMedia ? 'Uploading...' : uploadedMediaId ? 'File Ready ✓' : `Upload ${headerInfo.type}`}</span>
-                                                  <input type="file" className="hidden" accept={headerInfo.type === 'IMAGE' ? "image/*" : headerInfo.type === 'VIDEO' ? "video/*" : ".pdf,.doc,.docx"} onChange={handleMediaUpload} disabled={isUploadingMedia} />
-                                               </label>
-                                               {uploadedMediaId && (
-                                                 <button onClick={() => { setUploadedMediaId(null); setLocalMediaUrl(null); setMapping(prev => { const n = {...prev}; delete n.header_media_url; return n; }); }} className="p-3 rounded-xl bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 transition-all"><X size={16} /></button>
-                                               )}
-                                            </div>
-                                         </div>
-                                       ) : headerInfo.type === 'TEXT' && headerInfo.variables?.length > 0 && (
-                                          <div className="grid grid-cols-1 gap-4">
-                                            {headerInfo.variables.map((v, i) => (
-                                               <FieldSelect 
-                                                 key={`h-${i}`} 
-                                                 label={`Header: ${v}`} 
-                                                 value={mapping[v] || mapping[`Header Var ${v}`] || ''} 
-                                                 onChange={val => setMapping({...mapping, [v]: val, [`Header Var ${v}`]: val})} 
-                                                 options={csvHeaders} 
-                                               />
-                                            ))}
-                                          </div>
-                                       )}
-                                     </div>
-                                   )}
-
-                                   {/* ════════ BODY SECTION ════════ */}
-                                   {(bodyVariables.length > 0 || footerVariables.length > 0 || buttons.some(b => b.variables?.length > 0)) && (
-                                      <div className="p-4 rounded-2xl bg-white/[0.01] border border-border-dim space-y-4">
-                                         <div className="flex items-center gap-2 mb-1">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Message Body & Variables</p>
-                                         </div>
-                                         
-                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                            {/* Body Vars */}
-                                            {bodyVariables.map((v, i) => (
-                                               <FieldSelect 
-                                                 key={`b-${i}`} 
-                                                 label={`Body: ${v}`} 
-                                                 value={mapping[v] || mapping[`Body Var ${v}`] || ''} 
-                                                 onChange={val => setMapping({...mapping, [v]: val, [`Body Var ${v}`]: val})} 
-                                                 options={csvHeaders} 
-                                               />
-                                            ))}
-                                            {/* Footer Vars */}
-                                            {footerVariables.map((v, i) => (
-                                               <FieldSelect 
-                                                 key={`f-${i}`} 
-                                                 label={`Footer: ${v}`} 
-                                                 value={mapping[v] || mapping[`Footer Var ${v}`] || ''} 
-                                                 onChange={val => setMapping({...mapping, [v]: val, [`Footer Var ${v}`]: val})} 
-                                                 options={csvHeaders} 
-                                               />
-                                            ))}
-                                         </div>
-                                         {/* Button Vars */}
-                                         {buttons.map((btn, bIdx) => btn.variables?.length > 0 && (
-                                            <div key={`btn-${bIdx}`} className="p-3 rounded-xl bg-white/[0.01] border border-emerald-500/5 space-y-3">
-                                               <p className="text-[9px] font-bold text-emerald-500/60 uppercase tracking-tighter">Button Parameter: {btn.text}</p>
-                                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                                  {btn.variables.map((v, vIdx) => (
-                                                     <FieldSelect 
-                                                        key={vIdx} 
-                                                        label={`Button ${btn.text}: ${v}`} 
-                                                        value={mapping[`btn_${bIdx}_${v}`] || mapping[`Btn ${bIdx} Var ${v}`] || ''} 
-                                                        onChange={val => setMapping({...mapping, [`btn_${bIdx}_${v}`]: val, [`Btn ${bIdx} Var ${v}`]: val})} 
-                                                        options={csvHeaders} 
-                                                     />
-                                                  ))}
-                                               </div>
-                                            </div>
-                                         ))}
-                                      </div>
-                                   )}
-                                </div>
-                             ) : (
-                                <div className="space-y-2">
-                                   <textarea value={customMessage} onChange={e => setCustomMessage(e.target.value)} placeholder="Type your message here... Use {{ColumnName}} to insert data from your CSV." className="w-full h-32 lg:h-40 bg-bg-surface border border-border-dim rounded-xl p-4 lg:p-5 text-sm font-medium text-white outline-none focus:border-emerald-500/30 resize-none" />
-                                   <p className="text-[10px] text-slate-600 ml-1">Tip: Use {"{{Name}}"} or {"{{Phone}}"} to insert CSV column values.</p>
-                                </div>
-                             )}
-                         </div>
-
-                         {status && (<div className="p-3 rounded-xl bg-white/[0.02] border border-border-dim flex items-center gap-2 text-xs text-slate-400"><WarningCircle size={14} className="text-emerald-500 shrink-0" />{status}</div>)}
-                         
-                         <div className="pt-4 lg:pt-6 border-t border-border-dim flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                            <div className="flex items-center gap-3 cursor-pointer" onClick={() => setAllowDuplicates(!allowDuplicates)}>
-                               <div className={cn("w-5 h-5 rounded-md border flex items-center justify-center transition-all", allowDuplicates ? "bg-emerald-500 border-emerald-500" : "border-border-dim bg-white/5")}>
-                                  {allowDuplicates && <CheckCircle size={14} className="text-black" weight="bold" />}
-                               </div>
-                               <span className="text-xs font-medium text-slate-500">Allow duplicate numbers</span>
-                            </div>
-                            <button onClick={handleSend} disabled={isLoading.send || !isConnected || !file || csvData.length === 0} className="simple-btn btn-primary px-8 lg:px-10 h-11 lg:h-12 flex items-center gap-2 w-full sm:w-auto justify-center">
-                               {isLoading.send ? 'Starting...' : <><PaperPlaneTilt weight="bold" /> Start Sending</>}
-                            </button>
-                         </div>
-                      </div>
                    </motion.div>
 
-                   {/* RIGHT COLUMN: PREVIEW (STICKY) */}
-                    <div className="w-full lg:w-[350px] shrink-0 sticky top-24 space-y-4 z-10 pt-1.5">
-                       <div className="flex items-center justify-between px-2">
-                          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Live Preview</h3>
-                          <div className="flex items-center gap-2">
-                             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                             <span className="text-[10px] font-bold text-emerald-500/60 uppercase">High Fidelity</span>
-                          </div>
-                       </div>
-                       <TemplatePreview 
-                         template={selectedTpl} 
-                         mapping={mapping} 
-                         csvHeaders={csvHeaders} 
-                         uploadedMediaId={uploadedMediaId}
-                         localMediaUrl={localMediaUrl}
-                       />
-                       {selectedTpl && (
-                           <div className="p-4 rounded-2xl bg-white/[0.01] border border-border-dim">
-                              <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 text-center">Template Details</p>
-                              <div className="grid grid-cols-2 gap-2 text-[9px] font-bold">
-                                 <div className="bg-bg-surface p-2 rounded-lg border border-border-dim text-center">
-                                    <p className="text-slate-600 mb-0.5">CATEGORY</p>
-                                    <p className="text-white truncate">{selectedTpl.category || 'MARKETING'}</p>
-                                 </div>
-                                 <div className="bg-bg-surface p-2 rounded-lg border border-border-dim text-center">
-                                    <p className="text-slate-600 mb-0.5">LANGUAGE</p>
-                                    <p className="text-white">{selectedTpl.language || 'en'}</p>
-                                 </div>
-                              </div>
-                           </div>
+                   {/* SEGMENT 2: PARALLEL WORK AREA */}
+                   <div className="flex flex-col md:flex-row gap-8 items-start">
+                      
+                      {/* LEFT: SETTINGS */}
+                      <motion.div {...PAGE_TRANSITION} className="flex-1 space-y-6 lg:space-y-8 min-w-0">
+                         {/* 2. CHOOSE MESSAGE */}
+                         <div className="simple-card space-y-4 lg:space-y-5">
+                            <div className="flex items-center gap-4 border-b border-border-dim pb-4 mb-4">
+                               <div className="flex-1">
+                                  <h3 className="text-base lg:text-lg font-bold">Choose Message</h3>
+                                  <p className="text-[10px] lg:text-xs text-slate-500">Pick a template or write a custom message.</p>
+                               </div>
+                            </div>
+                            <div className="space-y-4">
+                               <div className="flex gap-2 p-1 bg-white/[0.02] border border-border-dim rounded-xl w-fit">
+                                  <button onClick={() => setMessageType('template')} className={cn("px-6 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all", messageType === 'template' ? "bg-emerald-500 text-black shadow-lg" : "text-slate-500 hover:text-slate-300")}>Template</button>
+                                  <button onClick={() => setMessageType('custom')} className={cn("px-6 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all", messageType === 'custom' ? "bg-emerald-500 text-black shadow-lg" : "text-slate-500 hover:text-slate-300")}>Custom</button>
+                               </div>
+                               
+                               {messageType === 'template' ? (
+                                  <div className="space-y-5">
+                                     <div className="flex gap-2 items-end">
+                                        <div className="flex-1 space-y-1.5">
+                                           <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Template Name</label>
+                                           <div className="relative">
+                                              <select value={selectedTemplate} onChange={e => setSelectedTemplate(e.target.value)} className="w-full bg-bg-surface border border-border-dim rounded-xl p-3 text-xs font-bold text-white outline-none appearance-none focus:border-emerald-500/30 transition-all">
+                                                 <option value="">-- Choose Template --</option>
+                                                 {templates.map(t => <option key={t.name} value={t.name}>{t.name} ({t.language})</option>)}
+                                              </select>
+                                              <CaretDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-600 pointer-events-none" size={14} />
+                                           </div>
+                                        </div>
+                                        <button onClick={handleRefreshTemplates} disabled={refreshingTemplates} className={cn("simple-btn bg-white/5 border border-border-dim text-slate-400 hover:text-emerald-500 hover:border-emerald-500/20 h-11 px-3 mb-[1px]", refreshingTemplates && "animate-pulse")} title="Refresh templates">
+                                           <ArrowsClockwise size={18} className={refreshingTemplates ? "animate-spin" : ""} />
+                                        </button>
+                                     </div>
+
+                                     {headerInfo?.type && (
+                                       <div className="p-4 rounded-2xl bg-white/[0.01] border border-border-dim space-y-4">
+                                         <div className="flex items-center gap-2 mb-1">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Message Header ({headerInfo.type})</p>
+                                         </div>
+
+                                         {['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerInfo.type) ? (
+                                           <div className="space-y-4">
+                                              <div className="flex items-center gap-3">
+                                                 <label className={cn("flex-1 flex items-center justify-center gap-2 p-3.5 rounded-xl border border-dashed transition-all cursor-pointer", uploadedMediaId ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-500" : "border-border-dim bg-white/[0.02] hover:border-emerald-500/20 text-slate-500")}>
+                                                    {isUploadingMedia ? <ArrowsClockwise size={16} className="animate-spin" /> : uploadedMediaId ? <CheckCircle size={16} weight="fill" /> : <Plus size={16} />}
+                                                    <span className="text-[10px] font-bold uppercase tracking-wider">{isUploadingMedia ? 'Uploading...' : uploadedMediaId ? 'File Ready ✓' : `Upload ${headerInfo.type}`}</span>
+                                                    <input type="file" className="hidden" accept={headerInfo.type === 'IMAGE' ? "image/*" : headerInfo.type === 'VIDEO' ? "video/*" : ".pdf,.doc,.docx"} onChange={handleMediaUpload} disabled={isUploadingMedia} />
+                                                 </label>
+                                                 {uploadedMediaId && (
+                                                   <button onClick={() => { setUploadedMediaId(null); setLocalMediaUrl(null); setMapping(prev => { const n = {...prev}; delete n.header_media_url; return n; }); }} className="p-3 rounded-xl bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 transition-all"><X size={16} /></button>
+                                                 )}
+                                              </div>
+                                           </div>
+                                         ) : headerInfo.type === 'TEXT' && headerInfo.variables?.length > 0 && (
+                                            <div className="grid grid-cols-1 gap-4">
+                                              {headerInfo.variables.map((v, i) => (
+                                                 <FieldSelect 
+                                                   key={`h-${i}`} 
+                                                   label={`Header: ${v}`} 
+                                                   value={mapping[v] || mapping[`Header Var ${v}`] || ''} 
+                                                   onChange={val => setMapping({...mapping, [v]: val, [`Header Var ${v}`]: val})} 
+                                                   options={csvHeaders} 
+                                                 />
+                                              ))}
+                                            </div>
+                                         )}
+                                       </div>
+                                     )}
+
+                                     {(bodyVariables.length > 0 || footerVariables.length > 0 || buttons.some(b => b.variables?.length > 0)) && (
+                                        <div className="p-4 rounded-2xl bg-white/[0.01] border border-border-dim space-y-4">
+                                           <div className="flex items-center gap-2 mb-1">
+                                              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Message Body & Variables</p>
+                                           </div>
+                                           
+                                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                              {bodyVariables.map((v, i) => (
+                                                 <FieldSelect key={`b-${i}`} label={`Body: ${v}`} value={mapping[v] || mapping[`Body Var ${v}`] || ''} onChange={val => setMapping({...mapping, [v]: val, [`Body Var ${v}`]: val})} options={csvHeaders} />
+                                              ))}
+                                              {footerVariables.map((v, i) => (
+                                                 <FieldSelect key={`f-${i}`} label={`Footer: ${v}`} value={mapping[v] || mapping[`Footer Var ${v}`] || ''} onChange={val => setMapping({...mapping, [v]: val, [`Footer Var ${v}`]: val})} options={csvHeaders} />
+                                              ))}
+                                           </div>
+                                           {buttons.map((btn, bIdx) => btn.variables?.length > 0 && (
+                                              <div key={`btn-${bIdx}`} className="p-3 rounded-xl bg-white/[0.01] border border-emerald-500/5 space-y-3">
+                                                 <p className="text-[9px] font-bold text-emerald-500/60 uppercase tracking-tighter">Button Parameter: {btn.text}</p>
+                                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                    {btn.variables.map((v, vIdx) => (
+                                                       <FieldSelect key={vIdx} label={`Button ${btn.text}: ${v}`} value={mapping[`btn_${bIdx}_${v}`] || mapping[`Btn ${bIdx} Var ${v}`] || ''} onChange={val => setMapping({...mapping, [`btn_${bIdx}_${v}`]: val, [`Btn ${bIdx} Var ${v}`]: val})} options={csvHeaders} />
+                                                    ))}
+                                                 </div>
+                                              </div>
+                                           ))}
+                                        </div>
+                                     )}
+                                  </div>
+                               ) : (
+                                  <div className="space-y-2">
+                                     <textarea value={customMessage} onChange={e => setCustomMessage(e.target.value)} placeholder="Type your message here... Use {{ColumnName}} to insert data from your CSV." className="w-full h-32 lg:h-40 bg-bg-surface border border-border-dim rounded-xl p-4 lg:p-5 text-sm font-medium text-white outline-none focus:border-emerald-500/30 resize-none" />
+                                     <p className="text-[10px] text-slate-600 ml-1">Tip: Use {"{{Name}}"} or {"{{Phone}}"} to insert CSV column values.</p>
+                                  </div>
+                               )}
+                            </div>
+
+                            {status && (<div className="p-3 rounded-xl bg-white/[0.02] border border-border-dim flex items-center gap-2 text-xs text-slate-400"><WarningCircle size={14} className="text-emerald-500 shrink-0" />{status}</div>)}
+                            
+                            <div className="pt-4 lg:pt-6 border-t border-border-dim flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                               <div className="flex items-center gap-3 cursor-pointer" onClick={() => setAllowDuplicates(!allowDuplicates)}>
+                                  <div className={cn("w-5 h-5 rounded-md border flex items-center justify-center transition-all", allowDuplicates ? "bg-emerald-500 border-emerald-500" : "border-border-dim bg-white/5")}>
+                                     {allowDuplicates && <CheckCircle size={14} className="text-black" weight="bold" />}
+                                  </div>
+                                  <span className="text-xs font-medium text-slate-500">Allow duplicate numbers</span>
+                               </div>
+                               <button onClick={handleSend} disabled={isLoading.send || !isConnected || !file || csvData.length === 0} className="simple-btn btn-primary px-8 lg:px-10 h-11 lg:h-12 flex items-center gap-2 w-full sm:w-auto justify-center">
+                                  {isLoading.send ? 'Starting...' : <><PaperPlaneTilt weight="bold" /> Start Sending</>}
+                               </button>
+                            </div>
+                         </div>
+                      </motion.div>
+
+                      {/* RIGHT: LIVE PREVIEW (STICKY) */}
+                      <div className="w-full lg:w-[350px] shrink-0 sticky top-24 space-y-4 z-10 pt-1.5">
+                         <div className="flex items-center justify-between px-2">
+                            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Live Preview</h3>
+                            <div className="flex items-center gap-2">
+                               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                               <span className="text-[10px] font-bold text-emerald-500/60 uppercase">High Fidelity</span>
+                            </div>
+                         </div>
+                         <TemplatePreview template={selectedTpl} mapping={mapping} csvHeaders={csvHeaders} uploadedMediaId={uploadedMediaId} localMediaUrl={localMediaUrl} />
+                         {selectedTpl && (
+                            <div className="p-4 rounded-2xl bg-white/[0.01] border border-border-dim">
+                               <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 text-center">Template Details</p>
+                               <div className="grid grid-cols-2 gap-2 text-[9px] font-bold">
+                                  <div className="bg-bg-surface p-2 rounded-lg border border-border-dim text-center">
+                                     <p className="text-slate-600 mb-0.5">CATEGORY</p>
+                                     <p className="text-white truncate">{selectedTpl.category || 'MARKETING'}</p>
+                                  </div>
+                                  <div className="bg-bg-surface p-2 rounded-lg border border-border-dim text-center">
+                                     <p className="text-slate-600 mb-0.5">LANGUAGE</p>
+                                     <p className="text-white">{selectedTpl.language || 'en'}</p>
+                                  </div>
+                               </div>
+                            </div>
                          )}
                       </div>
+
+                   </div>
                 </div>
               )}
-
               {/* ═══ STATUS TAB ═══ */}
               {activeTab === 'status' && (
                 <motion.div key="status" {...PAGE_TRANSITION} className="max-w-4xl mx-auto space-y-6 lg:space-y-8">
