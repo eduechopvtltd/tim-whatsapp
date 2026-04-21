@@ -123,7 +123,12 @@ const findJob = (jobId) => {
 // --- AUTHENTICATION MIDDLEWARE ---
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  let token = authHeader && authHeader.split(' ')[1];
+
+  // Allow token in query parameter for media/download requests
+  if (!token && req.query.token) {
+    token = req.query.token;
+  }
 
   if (!token) return res.status(401).json({ error: 'Access denied. Please login.' });
 

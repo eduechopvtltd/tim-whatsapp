@@ -1651,13 +1651,13 @@ export default function App() {
                                                    {msg.type === 'image' && (msg.mediaId || msg.mediaUrl) ? (
                                                       <div className="relative">
                                                          <img 
-                                                            src={msg.mediaId ? `${API_BASE}/api/media/${msg.mediaId}` : msg.mediaUrl} 
+                                                            src={msg.mediaId ? `${API_BASE}/api/media/${msg.mediaId}?token=${token}` : msg.mediaUrl} 
                                                             alt="msg" 
                                                             className="max-w-full h-auto object-cover max-h-64 cursor-pointer hover:opacity-90 transition-opacity"
-                                                            onClick={() => window.open(msg.mediaId ? `${API_BASE}/api/media/${msg.mediaId}` : msg.mediaUrl, '_blank')}
+                                                            onClick={() => window.open(msg.mediaId ? `${API_BASE}/api/media/${msg.mediaId}?token=${token}` : msg.mediaUrl, '_blank')}
                                                          />
                                                          <a 
-                                                            href={msg.mediaId ? `${API_BASE}/api/media/${msg.mediaId}` : msg.mediaUrl} 
+                                                            href={msg.mediaId ? `${API_BASE}/api/media/${msg.mediaId}?token=${token}` : msg.mediaUrl} 
                                                             download={`image_${msg.id}.jpg`}
                                                             className="absolute bottom-2 right-2 p-2 bg-black/60 backdrop-blur-md border border-white/10 text-white rounded-lg opacity-0 group-hover/media:opacity-100 transition-all hover:bg-emerald-500 hover:text-black"
                                                          >
@@ -1666,7 +1666,7 @@ export default function App() {
                                                       </div>
                                                    ) : msg.type === 'video' && msg.mediaId ? (
                                                       <video controls className="max-w-full h-auto bg-black rounded-lg">
-                                                         <source src={`${API_BASE}/api/media/${msg.mediaId}`} type="video/mp4" />
+                                                         <source src={`${API_BASE}/api/media/${msg.mediaId}?token=${token}`} type="video/mp4" />
                                                          Your browser does not support the video tag.
                                                       </video>
                                                    ) : msg.type === 'document' && msg.mediaId ? (
@@ -1681,7 +1681,7 @@ export default function App() {
                                                             </div>
                                                          </div>
                                                          <a 
-                                                            href={`${API_BASE}/api/media/${msg.mediaId}`} 
+                                                            href={`${API_BASE}/api/media/${msg.mediaId}?token=${token}`} 
                                                             download={msg.filename || 'document'} 
                                                             className="p-2.5 bg-emerald-500 text-black rounded-xl hover:bg-emerald-400 transition-all shadow-lg shadow-emerald-500/20 active:scale-95"
                                                          >
