@@ -1447,6 +1447,8 @@ app.post('/webhook', async (req, res) => {
         }
         if (!profileName) profileName = from; // Fallback to phone number
         
+        let text = '';
+        const msgType = msg.type;
         let mediaId = null;
         let filename = null;
         
