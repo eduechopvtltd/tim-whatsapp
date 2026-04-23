@@ -100,8 +100,6 @@ const GlobalStateSchema = new mongoose.Schema({
 });
 
 GlobalStateSchema.index({ userId: 1, key: 1 }, { unique: true });
-CampaignSchema.index({ userId: 1, id: 1 }, { unique: true });
-ChatSchema.index({ userId: 1, phone: 1 }, { unique: true });
 
 // WamidMapping: Maps Meta Message IDs to campaigns for persistent status tracking
 const WamidMappingSchema = new mongoose.Schema({
