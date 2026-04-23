@@ -336,9 +336,8 @@ export default function App() {
   useEffect(() => {
     if (!token) return;
     fetchWithAuth(`${API_BASE}/api/config`).then(r => { if (!r.ok) throw new Error('auth'); return r.json(); }).then(data => {
-      // Auto-repair user ID if missing (Critical for Socket.io)
-      if (data.ID && (!user?.id || user.id !== data.ID)) {
-        const updatedUser = { ...user, id: data.ID };
+      if (data && data.ID && (!user?.id || user.id !== data.ID)) {
+        const updatedUser = { ...(user || {}), id: data.ID, username: user?.username || 'User' };
         setUser(updatedUser);
         localStorage.setItem('tim_user', JSON.stringify(updatedUser));
       }
@@ -403,7 +402,7 @@ export default function App() {
     return () => clearInterval(interval);
   }, [token, activeTab, activeChatPhone]);
 
-  const unreadTotal = useMemo(() => chats.reduce((acc, c) => acc + (c.unreadCount || 0), 0), [chats]);
+  const unreadTotal = useMemo(() => (chats || []).reduce((acc, c) => acc + (c.unreadCount || 0), 0), [chats]);
 
   // --- NOTIFICATION SOUNDS & BROWSER POPUPS ---
   const lastUnreadTotal = useRef(0);
@@ -510,7 +509,7 @@ export default function App() {
   }, [historyData, debouncedHistorySearch, historyStatusFilter]);
 
   const sortedChats = useMemo(() => {
-    return [...chats].sort((a, b) => {
+    return [...(chats || [])].sort((a, b) => {
       // Use numeric timestamps for precise comparison
       const dateA = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
       const dateB = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
@@ -910,7 +909,7 @@ export default function App() {
           <SidebarLink active={activeTab === 'send'} onClick={() => switchTab('send')} icon={PaperPlaneTilt} label="Send" />
           <SidebarLink active={activeTab === 'status'} onClick={() => switchTab('status')} icon={ChartLine} label="Status" badge={jobStatus?.status === 'Running' ? '●' : null} />
           <SidebarLink active={activeTab === 'inbox'} onClick={() => switchTab('inbox')} icon={ChatCircleDots} label="Inbox" badge={unreadTotal > 0 ? unreadTotal : null} />
-          <SidebarLink active={activeTab === 'history'} onClick={() => switchTab('history')} icon={Clock} label="History" badge={historyData.length > 0 ? historyData.length : null} />
+          <SidebarLink active={activeTab === 'history'} onClick={() => switchTab('history')} icon={Clock} label="History" badge={(historyData || []).length > 0 ? historyData.length : null} />
           <div className="pt-4 border-t border-border-dim mt-4 opacity-50" />
           <SidebarLink active={activeTab === 'settings'} onClick={() => switchTab('settings')} icon={Gear} label="Settings" />
         </nav>
@@ -944,7 +943,7 @@ export default function App() {
                 {TAB_TITLES[activeTab]}
                 {activeTab === 'inbox' && (
                   <span className="ml-3 px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-[10px] rounded-full font-black">
-                    {chats.length} USERS
+                    {(chats || []).length} USERS
                   </span>
                 )}
              </h2>
