@@ -42,7 +42,9 @@ import {
   Smiley,
   Check,
   Lock,
-  Trash
+  Trash,
+  ChatTeardropDots,
+  EnvelopeSimple
 } from "@phosphor-icons/react";
 import { motion, AnimatePresence } from 'framer-motion';
 import { clsx } from 'clsx';
@@ -1600,7 +1602,7 @@ export default function App() {
                                </div>
                             </button>
                          )) : (
-                             <div class="p-8 text-center opacity-40"><ChatTeardropDots size={40} className="mx-auto mb-3 text-slate-700" weight="fill" /><p className="text-[13px] text-slate-500">No conversations found</p></div>
+                             <div className="p-8 text-center opacity-40"><ChatTeardropDots size={40} className="mx-auto mb-3 text-slate-700" weight="fill" /><p className="text-[13px] text-slate-500">No conversations found</p></div>
                          )}
                       </div>
                    </div>

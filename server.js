@@ -1158,12 +1158,12 @@ app.get('/api/config', authenticateToken, async (req, res) => {
     
     res.json({
       ID: user._id,
-      PHONE_NUMBER_ID: user.config.phoneId,
-      WABA_ID: user.config.wabaId,
-      ACCESS_TOKEN: user.config.token,
-      APP_ID: user.config.appId,
-      WEBHOOK_VERIFY_TOKEN: user.config.verifyToken,
-      emailConfig: user.emailConfig
+      PHONE_NUMBER_ID: user.config?.phoneId || '',
+      WABA_ID: user.config?.wabaId || '',
+      ACCESS_TOKEN: user.config?.token || '',
+      APP_ID: user.config?.appId || '',
+      WEBHOOK_VERIFY_TOKEN: user.config?.verifyToken || 'my_secret_token',
+      emailConfig: user.emailConfig || { enabled: false }
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch configuration' });
