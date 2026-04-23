@@ -376,11 +376,14 @@ async function runCampaignWorker(campaignId) {
     const { userId, id: jobIdNum } = campaign;
     const jobId = jobIdNum.toString();
 
+    const userObj = await User.findById(userId);
+    const username = userObj ? userObj.username : 'Unknown';
+
     // Ensure it's in the memory cache for the UI polling
     if (!jobs[userId]) jobs[userId] = {};
     jobs[userId][jobId] = campaign.toObject();
 
-    console.log(`[WORKER] Starting/Resuming Campaign ${jobId} for user ${userId}`);
+    console.log(`[WORKER] [User: ${username}] Starting/Resuming Campaign ${jobId}`);
 
     const { contacts, mapping, messageType, templateName, customMessage, config, processed, allowDuplicates } = campaign;
     const { token: ACCESS_TOKEN, phoneId: PHONE_NUMBER_ID, wabaId: WABA_ID } = config;
