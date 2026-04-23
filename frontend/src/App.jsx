@@ -259,32 +259,30 @@ export default function App() {
         });
       }
 
-      // Live update History tab ONLY if it is currently open (prevents sending-lag)
-      if (activeTab === 'history') {
-        setHistoryData(prev => prev.map(job => {
-          const jId = String(job.id || job._id || '');
-          if (jId === String(updatedJobId) || jId.slice(-6) === String(updatedJobId).slice(-6)) {
-            const updatedResults = job.results?.map(r => 
-              r.phone === updatedPhone ? { ...r, status: newStatus } : r
-            );
-            return { ...job, results: updatedResults };
-          }
-          return job;
-        }));
+      // Update History tab data always to keep it in sync
+      setHistoryData(prev => prev.map(job => {
+        const jId = String(job.id || job._id || '');
+        if (jId === String(updatedJobId) || jId.slice(-6) === String(updatedJobId).slice(-6)) {
+          const updatedResults = job.results?.map(r => 
+            r.phone === updatedPhone ? { ...r, status: newStatus } : r
+          );
+          return { ...job, results: updatedResults };
+        }
+        return job;
+      }));
 
-        // ALSO update the expanded detail view if user is looking at this job
-        setExpandedHistoryJob(prev => {
-          if (!prev) return null;
-          const prevId = String(prev.id || prev._id || '');
-          if (prevId === String(updatedJobId) || prevId.slice(-6) === String(updatedJobId).slice(-6)) {
-            const updatedResults = prev.results?.map(r => 
-              r.phone === updatedPhone ? { ...r, status: newStatus } : r
-            );
-            return { ...prev, results: updatedResults };
-          }
-          return prev;
-        });
-      }
+      // ALSO update the expanded detail view if user is looking at this job
+      setExpandedHistoryJob(prev => {
+        if (!prev) return null;
+        const prevId = String(prev.id || prev._id || '');
+        if (prevId === String(updatedJobId) || prevId.slice(-6) === String(updatedJobId).slice(-6)) {
+          const updatedResults = prev.results?.map(r => 
+            r.phone === updatedPhone ? { ...r, status: newStatus } : r
+          );
+          return { ...prev, results: updatedResults };
+        }
+        return prev;
+      });
     });
 
     socket.on('campaign_progress', ({ jobId: progJobId, status: newProgress }) => {
@@ -1403,11 +1401,11 @@ export default function App() {
                               </div>
                               <div className="p-5 rounded-2xl bg-white/[0.01] border border-border-dim text-center hover:bg-white/[0.03] transition-colors">
                                  <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-[0.2em] mb-2">Successful</p>
-                                 <p className="text-2xl font-bold text-emerald-500 tracking-tight">{expandedHistoryJob.sent || expandedHistoryJob.results?.filter(r => r.status?.includes('Sent')).length || 0}</p>
+                                 <p className="text-2xl font-bold text-emerald-500 tracking-tight">{expandedHistoryJob.results ? expandedHistoryJob.results.filter(r => !r.status?.includes('Failed') && !r.status?.includes('Error')).length : expandedHistoryJob.sent || 0}</p>
                               </div>
                               <div className="p-5 rounded-2xl bg-white/[0.01] border border-border-dim text-center hover:bg-white/[0.03] transition-colors">
                                  <p className="text-[10px] font-bold text-red-500 uppercase tracking-[0.2em] mb-2">Failed Delivery</p>
-                                 <p className="text-2xl font-bold text-red-500 tracking-tight">{expandedHistoryJob.failed || expandedHistoryJob.results?.filter(r => r.status?.includes('Failed')).length || 0}</p>
+                                 <p className="text-2xl font-bold text-red-500 tracking-tight">{expandedHistoryJob.results ? expandedHistoryJob.results.filter(r => r.status?.includes('Failed') || r.status?.includes('Error')).length : expandedHistoryJob.failed || 0}</p>
                               </div>
                               <div className="p-5 rounded-2xl bg-white/[0.01] border border-border-dim text-center hover:bg-white/[0.03] transition-colors">
                                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-2">Delivery Status</p>
