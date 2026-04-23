@@ -427,17 +427,22 @@ async function runCampaignWorker(campaignId) {
 
       // --- DEDUPLICATION CHECK ---
       if (alreadySentSet.has(cleanPhone)) {
-        msgStatus = 'Skipped ✅ (Duplicate)';
+        msgStatus = 'Skipped ✅ (Duplicate in Campaign)';
         console.log(`[WORKER] Skipping duplicate in current campaign: ${cleanPhone}`);
-      } else if (!allowDuplicates && messageType === 'template') {
-        const historyCheck = await Chat.findOne({
+      } else if (!allowDuplicates) {
+        // Check history for either the same template OR the same custom message
+        const searchQuery = {
             userId,
             phone: cleanPhone,
-            "messages.text": `[Sent Template: ${templateName}]`
-        });
+            $or: [
+                { "messages.text": `[Sent Template: ${templateName}]` },
+                { "messages.text": customMessage }
+            ]
+        };
+        const historyCheck = await Chat.findOne(searchQuery);
         if (historyCheck) {
-            msgStatus = 'Skipped ✅ (Template History)';
-            console.log(`[WORKER] Skipping duplicate from history: ${cleanPhone} for template ${templateName}`);
+            msgStatus = 'Skipped ✅ (History Duplicate)';
+            console.log(`[WORKER] Skipping duplicate from history: ${cleanPhone}`);
         }
       }
 
@@ -998,7 +1003,9 @@ app.post('/api/send', authenticateToken, async (req, res) => {
   }
 
   const { contacts, messageType, templateName, templateParams, customMessage, mapping, allowDuplicates } = req.body;
-  const jobId = Date.now();
+  
+  // Unique Job ID: Combine userId and timestamp for absolute multi-tenant isolation
+  const jobId = `${userId}_${Date.now()}`;
 
   // Initialize Persistent Campaign record
   const campaign = new Campaign({
@@ -1333,13 +1340,21 @@ app.get('/webhook', async (req, res) => {
   const challenge = req.query['hub.challenge'] || req.query.challenge;
 
   if (mode && token) {
+    // 1. Check Global Token
     if (mode === 'subscribe' && token === WEBHOOK_VERIFY_TOKEN) {
-      console.log('WEBHOOK_VERIFIED ✅');
+      console.log('WEBHOOK_VERIFIED (Global) ✅');
       return res.status(200).send(challenge);
-    } else {
-      console.warn('WEBHOOK_VERIFICATION_FAILED: Token mismatch');
-      return res.sendStatus(403);
+    } 
+    
+    // 2. Check Multi-Tenant (User Database)
+    const tenantUser = await User.findOne({ 'config.verifyToken': token });
+    if (mode === 'subscribe' && tenantUser) {
+      console.log(`WEBHOOK_VERIFIED (Tenant: ${tenantUser.username}) ✅`);
+      return res.status(200).send(challenge);
     }
+
+    console.warn('WEBHOOK_VERIFICATION_FAILED: Token mismatch');
+    return res.sendStatus(403);
   }
 
   // If no params, it might be a ping or misconfigured request
@@ -1372,7 +1387,7 @@ app.post('/webhook', async (req, res) => {
         let recipient = statusInfo.recipient_id;
         let wamid = statusInfo.id;
 
-        console.log(`[Webhook] Status Update: ${recipient} -> ${statusString.toUpperCase()} (ID: ${wamid})`);
+        console.log(`[Webhook] Status Update: ${recipient} -> ${statusString.toUpperCase()} (ID: ${wamid}) | PhoneId: ${phoneId} | User: ${user.username}`);
 
         // UPDATE JOB MEMORY
         let mapping = wamidToJob[wamid];
@@ -1414,8 +1429,16 @@ app.post('/webhook', async (req, res) => {
               }
               
               // Also update the database if the campaign is already saved
+              // Support both numeric and string IDs for backward compatibility
+              const campaignQuery = { userId: userId, "results.phone": phone };
+              if (!isNaN(jobId)) {
+                  campaignQuery.id = Number(jobId);
+              } else {
+                  campaignQuery.id = jobId;
+              }
+
               Campaign.findOneAndUpdate(
-                { userId: userId, id: Number(jobId), "results.phone": phone },
+                campaignQuery,
                 { $set: { "results.$.status": result.status } }
               ).catch(err => console.error('[Webhook] DB Sync Error:', err.message));
 

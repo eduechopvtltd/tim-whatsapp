@@ -52,7 +52,7 @@ ChatSchema.index({ userId: 1, phone: 1 }, { unique: true });
 // Campaign Schema: Stores history and state of bulk messaging campaigns per user
 const CampaignSchema = new mongoose.Schema({
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    id: { type: Number, required: true },
+    id: { type: mongoose.Schema.Types.Mixed, required: true },
     name: { type: String, required: true },
     status: { type: String, default: 'Running' }, // Running, Paused, Completed, Stopped, Error
     
