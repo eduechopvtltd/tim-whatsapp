@@ -786,8 +786,11 @@ export default function App() {
 
   const handleSelectAttachment = (file, type) => {
     if (!file) return;
-    const previewUrl = type === 'image' ? URL.createObjectURL(file) : null;
-    setPendingAttachment({ file, type, previewUrl });
+    const isImage = file.type.startsWith('image/');
+    const isVideo = file.type.startsWith('video/');
+    const previewUrl = (isImage || isVideo) ? URL.createObjectURL(file) : null;
+    const finalType = isImage ? 'image' : isVideo ? 'video' : 'document';
+    setPendingAttachment({ file, type: finalType, previewUrl });
     setShowAttachmentMenu(false);
   };
 
@@ -953,7 +956,7 @@ export default function App() {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-4 lg:p-10">
+        <div className={cn("flex-1 overflow-y-auto w-full", activeTab === 'inbox' ? "p-0 overflow-hidden" : "p-4 lg:p-10")}>
            <AnimatePresence mode="wait">
 
               {/* ═══ HOME TAB ═══ */}
@@ -1528,7 +1531,7 @@ export default function App() {
 
               {/* ═══ INBOX TAB ═══ */}
               {activeTab === 'inbox' && (
-                <motion.div key="inbox" {...PAGE_TRANSITION} className="h-[calc(100vh-12rem)] flex gap-0 bg-bg-surface border border-border-dim rounded-2xl overflow-hidden relative">
+                <motion.div key="inbox" {...PAGE_TRANSITION} className="h-full flex gap-0 bg-bg-surface relative">
                    {/* LEFT SIDEBAR: CONVERSATIONS */}
                    <div className={cn(
                       "w-full lg:w-[350px] flex flex-col border-r border-border-dim bg-bg-base shrink-0 transition-all duration-300",
@@ -1742,6 +1745,43 @@ export default function App() {
                                        </button>
                                        <input id="inbox-img" type="file" className="hidden" accept="image/*,video/*" onChange={(e) => handleSelectAttachment(e.target.files[0], 'image')} />
                                        <input id="inbox-doc" type="file" className="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx" onChange={(e) => handleSelectAttachment(e.target.files[0], 'document')} />
+                                    </motion.div>
+                                 )}
+                              </AnimatePresence>
+ 
+                              {/* Pending Attachment Preview */}
+                              <AnimatePresence>
+                                 {pendingAttachment && (
+                                    <motion.div 
+                                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                                      className="absolute bottom-full left-0 right-0 p-4 bg-[#233138]/95 backdrop-blur-xl border-t border-border-dim z-50 overflow-hidden"
+                                    >
+                                       <div className="max-w-2xl mx-auto flex items-center gap-4">
+                                          <div className="relative group/prev">
+                                             {pendingAttachment.type === 'image' ? (
+                                                <img src={pendingAttachment.previewUrl} className="w-20 h-20 object-cover rounded-xl border border-white/10 shadow-2xl" alt="preview" />
+                                             ) : pendingAttachment.type === 'video' ? (
+                                                <video src={pendingAttachment.previewUrl} className="w-20 h-20 object-cover rounded-xl border border-white/10 shadow-2xl" />
+                                             ) : (
+                                                <div className="w-20 h-20 bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-500 border border-emerald-500/10">
+                                                   <FileText size={32} weight="fill" />
+                                                </div>
+                                             )}
+                                             <button 
+                                               type="button" 
+                                               onClick={() => setPendingAttachment(null)}
+                                               className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg opacity-0 group-hover/prev:opacity-100 transition-all hover:bg-red-400 scale-90 group-hover/prev:scale-100"
+                                             >
+                                               <X size={14} weight="bold" />
+                                             </button>
+                                          </div>
+                                          <div className="flex-1 min-w-0">
+                                             <p className="text-sm font-bold text-white truncate">{pendingAttachment.file.name}</p>
+                                             <p className="text-[10px] text-emerald-500 font-black uppercase tracking-widest mt-1">Ready to upload • {(pendingAttachment.file.size / 1024 / 1024).toFixed(2)} MB</p>
+                                          </div>
+                                       </div>
                                     </motion.div>
                                  )}
                               </AnimatePresence>
