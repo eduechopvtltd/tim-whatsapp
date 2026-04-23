@@ -510,7 +510,7 @@ async function runCampaignWorker(campaignId) {
       if (msgStatus.includes('✅')) updateData.$inc.sent = 1;
       else updateData.$inc.failed = 1;
 
-      const updatedCampaign = await Campaign.findByIdAndUpdate(campaignId, updateData, { new: true });
+      const updatedCampaign = await Campaign.findByIdAndUpdate(campaignId, updateData, { returnDocument: 'after' });
       jobs[userId][jobId] = updatedCampaign.toObject();
 
       // Real-time Campaign Progress update
@@ -519,7 +519,7 @@ async function runCampaignWorker(campaignId) {
 
     const finalStatus = (await Campaign.findById(campaignId)).status;
     if (finalStatus !== 'Stopped') {
-        const finishedCampaign = await Campaign.findByIdAndUpdate(campaignId, { status: 'Completed' }, { new: true });
+        const finishedCampaign = await Campaign.findByIdAndUpdate(campaignId, { status: 'Completed' }, { returnDocument: 'after' });
         jobs[userId][jobId] = finishedCampaign.toObject();
         console.log(`[WORKER] Campaign ${jobId} Completed!`);
     }
@@ -1095,9 +1095,9 @@ app.get('/api/status/:jobId', authenticateToken, async (req, res) => {
 app.post('/api/pause/:jobId', authenticateToken, async (req, res) => {
   try {
     const campaign = await Campaign.findOneAndUpdate(
-        { userId: req.user.id, id: parseInt(req.params.jobId), status: 'Running' },
+        { userId: req.user.id, id: req.params.jobId, status: 'Running' },
         { status: 'Paused' },
-        { new: true }
+        { returnDocument: 'after' }
     );
     if (!campaign) return res.status(404).json({ error: 'Running campaign not found' });
     
@@ -1116,9 +1116,9 @@ app.post('/api/pause/:jobId', authenticateToken, async (req, res) => {
 app.post('/api/resume/:jobId', authenticateToken, async (req, res) => {
   try {
     const campaign = await Campaign.findOneAndUpdate(
-        { userId: req.user.id, id: parseInt(req.params.jobId), status: 'Paused' },
+        { userId: req.user.id, id: req.params.jobId, status: 'Paused' },
         { status: 'Running' },
-        { new: true }
+        { returnDocument: 'after' }
     );
     if (!campaign) return res.status(404).json({ error: 'Paused campaign not found' });
 
@@ -1139,9 +1139,9 @@ app.post('/api/resume/:jobId', authenticateToken, async (req, res) => {
 app.post('/api/stop/:jobId', authenticateToken, async (req, res) => {
   try {
     const campaign = await Campaign.findOneAndUpdate(
-        { userId: req.user.id, id: parseInt(req.params.jobId), status: { $in: ['Running', 'Paused'] } },
+        { userId: req.user.id, id: req.params.jobId, status: { $in: ['Running', 'Paused'] } },
         { status: 'Stopped' },
-        { new: true }
+        { returnDocument: 'after' }
     );
     if (!campaign) return res.status(404).json({ error: 'Active campaign not found' });
 
