@@ -937,7 +937,14 @@ export default function App() {
         <header className="h-16 lg:h-20 flex items-center justify-between px-4 lg:px-10 border-b border-border-dim shrink-0 bg-bg-base/50 backdrop-blur-md sticky top-0 z-30">
           <div className="flex items-center gap-3 lg:gap-4 min-w-0">
              <button className="lg:hidden p-2 -ml-2 text-slate-400 hover:text-white bg-white/5 rounded-lg border border-border-dim transition-all shrink-0" onClick={() => setSidebarOpen(true)}><List size={20} weight="bold" /></button>
-             <h2 className="text-base lg:text-xl font-bold tracking-tight truncate">{TAB_TITLES[activeTab]}</h2>
+             <h2 className="text-base lg:text-xl font-bold tracking-tight truncate">
+                {TAB_TITLES[activeTab]}
+                {activeTab === 'inbox' && (
+                  <span className="ml-3 px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-[10px] rounded-full font-black">
+                    {chats.length} USERS
+                  </span>
+                )}
+             </h2>
           </div>
 
           <div className="flex items-center gap-3 lg:gap-6 shrink-0">
@@ -1531,7 +1538,7 @@ export default function App() {
 
               {/* ═══ INBOX TAB ═══ */}
               {activeTab === 'inbox' && (
-                <motion.div key="inbox" {...PAGE_TRANSITION} className="h-full flex gap-0 bg-bg-surface relative">
+                <motion.div key="inbox" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className="flex-1 flex gap-0 bg-bg-surface relative">
                    {/* LEFT SIDEBAR: CONVERSATIONS */}
                    <div className={cn(
                       "w-full lg:w-[350px] flex flex-col border-r border-border-dim bg-bg-base shrink-0 transition-all duration-300",
@@ -1612,7 +1619,7 @@ export default function App() {
                                  </div>
                                  <div className="min-w-0 cursor-pointer flex flex-col justify-center">
                                     <h3 className="text-[15px] font-medium text-[#e9edef] truncate h-5 leading-none mt-1">{chats.find(c => c.phone === activeChatPhone)?.name || 'Customer'}</h3>
-                                    <p className="text-[12px] text-slate-500 font-medium h-4 leading-none mb-1">online</p>
+                                    <p className="text-[12px] text-slate-500 font-medium h-4 leading-none mb-1">+{activeChatPhone}</p>
                                  </div>
                               </div>
                               <div className="flex items-center gap-2 text-slate-500">
