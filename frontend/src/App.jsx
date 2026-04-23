@@ -889,7 +889,7 @@ export default function App() {
   //  MAIN DASHBOARD
   // ═══════════════════════════════════════════
   return (
-    <div className="min-h-screen flex bg-bg-base text-slate-300">
+    <div className="h-screen flex bg-bg-base text-slate-300 overflow-hidden">
       {sidebarOpen && <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />}
 
       <aside className={cn(
@@ -934,7 +934,10 @@ export default function App() {
 
       <main className="flex-1 flex flex-col relative overflow-hidden w-full min-w-0">
 
-        <header className="h-16 lg:h-20 flex items-center justify-between px-4 lg:px-10 border-b border-border-dim shrink-0 bg-bg-base/50 backdrop-blur-md sticky top-0 z-30">
+        <header className={cn(
+          "h-16 lg:h-20 flex items-center justify-between px-4 lg:px-10 border-b border-border-dim shrink-0 bg-bg-base/50 backdrop-blur-md z-30",
+          activeTab !== 'inbox' && "sticky top-0"
+        )}>
           <div className="flex items-center gap-3 lg:gap-4 min-w-0">
              <button className="lg:hidden p-2 -ml-2 text-slate-400 hover:text-white bg-white/5 rounded-lg border border-border-dim transition-all shrink-0" onClick={() => setSidebarOpen(true)}><List size={20} weight="bold" /></button>
              <h2 className="text-base lg:text-xl font-bold tracking-tight truncate">
@@ -963,7 +966,7 @@ export default function App() {
           </div>
         </header>
 
-        <div className={cn("flex-1 overflow-y-auto w-full", activeTab === 'inbox' ? "p-0 overflow-hidden" : "p-4 lg:p-10")}>
+        <div className={cn("flex-1 w-full", activeTab === 'inbox' ? "p-0 overflow-hidden flex flex-col" : "p-4 lg:p-10 overflow-y-auto")}>
            <AnimatePresence mode="wait">
 
               {/* ═══ HOME TAB ═══ */}
@@ -1538,7 +1541,7 @@ export default function App() {
 
               {/* ═══ INBOX TAB ═══ */}
               {activeTab === 'inbox' && (
-                <motion.div key="inbox" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className="flex-1 flex gap-0 bg-bg-surface relative">
+                <motion.div key="inbox" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="h-full flex gap-0 bg-bg-surface relative overflow-hidden">
                    {/* LEFT SIDEBAR: CONVERSATIONS */}
                    <div className={cn(
                       "w-full lg:w-[350px] flex flex-col border-r border-border-dim bg-bg-base shrink-0 transition-all duration-300",
