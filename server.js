@@ -1963,16 +1963,18 @@ async function updateHookdeckDestination(newUrl) {
         console.log(`[BRIDGE] Found destination "${destinationName}" with ID: ${resolvedId}. Updating URL...`);
 
         // Step 2: Update the resolved destination URL
-        // We use the base newUrl because Hookdeck appends the path (e.g. /webhook) from the source automatically
+        // Destination URL must include /webhook because that's our Express route
+        // Meta callback URL should NOT include /webhook (Hookdeck appends the destination path)
         const baseUrl = newUrl.endsWith('/') ? newUrl.slice(0, -1) : newUrl;
+        const webhookUrl = `${baseUrl}/webhook`;
         await axios.put(`https://api.hookdeck.com/2024-03-01/destinations/${resolvedId}`, {
             name: destinationName,
-            config: { url: baseUrl }
+            config: { url: webhookUrl }
         }, {
             headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }
         });
 
-        console.log(`[BRIDGE] Success! Hookdeck destination ${resolvedId} updated to base: ${baseUrl}`);
+        console.log(`[BRIDGE] Success! Hookdeck destination ${resolvedId} updated to: ${webhookUrl}`);
     } catch (err) {
         const errorData = err.response?.data ? JSON.stringify(err.response.data) : 'No extra data';
         const errorMsg = err.response?.data?.message || err.message;
