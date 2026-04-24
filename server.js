@@ -70,6 +70,31 @@ const connectDB = async () => {
             { updatePipeline: true }
         );
         
+        // CRITICAL: Drop stale single-field unique indexes left over from single-tenant era
+        // These block multi-tenant (e.g., two users can't chat with the same phone number)
+        try {
+            const chatIndexes = await Chat.collection.indexes();
+            const stalePhoneIndex = chatIndexes.find(i => i.name === 'phone_1');
+            if (stalePhoneIndex) {
+                await Chat.collection.dropIndex('phone_1');
+                console.log('[DB] 🧹 Dropped stale index: chats.phone_1 (was blocking multi-tenant)');
+            }
+        } catch (idxErr) {
+            // Index might not exist, that's fine
+            if (idxErr.code !== 27) console.warn('[DB] Index cleanup note:', idxErr.message);
+        }
+        
+        try {
+            const campaignIndexes = await Campaign.collection.indexes();
+            const staleIdIndex = campaignIndexes.find(i => i.name === 'id_1');
+            if (staleIdIndex) {
+                await Campaign.collection.dropIndex('id_1');
+                console.log('[DB] 🧹 Dropped stale index: campaigns.id_1 (was blocking multi-tenant)');
+            }
+        } catch (idxErr) {
+            if (idxErr.code !== 27) console.warn('[DB] Index cleanup note:', idxErr.message);
+        }
+        
         return true;
     } catch (err) {
         console.error('[DB] ❌ Connection error:', err.message);
