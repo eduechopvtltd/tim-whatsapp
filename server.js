@@ -562,6 +562,30 @@ async function resumeActiveCampaigns() {
     }
 }
 
+// Subscribe ALL user WABAs for webhooks on startup
+// This ensures every account receives webhook events from Meta
+async function subscribeAllWABAs() {
+    try {
+        const users = await User.find({ 'config.wabaId': { $ne: '' }, 'config.token': { $ne: '' } });
+        console.log(`[STARTUP] Subscribing ${users.length} WABA(s) for webhooks...`);
+        
+        for (const user of users) {
+            try {
+                await axios.post(
+                    `https://graph.facebook.com/v21.0/${user.config.wabaId}/subscribed_apps`,
+                    {},
+                    { headers: { 'Authorization': `Bearer ${user.config.token}` } }
+                );
+                console.log(`[WEBHOOK SUB] ✅ ${user.username} (WABA: ${user.config.wabaId}) subscribed`);
+            } catch (subErr) {
+                console.error(`[WEBHOOK SUB] ❌ ${user.username} (WABA: ${user.config.wabaId}) failed:`, subErr.response?.data?.error?.message || subErr.message);
+            }
+        }
+    } catch (err) {
+        console.error('[STARTUP] WABA subscription error:', err.message);
+    }
+}
+
 /**
  * Build a simple text message payload
  */
@@ -1207,10 +1231,52 @@ app.post('/api/config', authenticateToken, async (req, res) => {
     // Clear user-specific media cache on config change
     await GlobalState.deleteOne({ userId: req.user.id, key: 'mediaCache' });
 
+    // AUTO-SUBSCRIBE WABA FOR WEBHOOKS
+    // This is the critical step that makes webhooks work for EACH account.
+    // Without this, Meta silently drops all webhook events for this WABA.
+    const wabaId = user.config.wabaId;
+    const token = user.config.token;
+    if (wabaId && token) {
+      try {
+        const subRes = await axios.post(
+          `https://graph.facebook.com/v21.0/${wabaId}/subscribed_apps`,
+          {},
+          { headers: { 'Authorization': `Bearer ${token}` } }
+        );
+        console.log(`[WEBHOOK SUB] WABA ${wabaId} subscribed for webhooks: ${JSON.stringify(subRes.data)}`);
+      } catch (subErr) {
+        console.error(`[WEBHOOK SUB] Failed to subscribe WABA ${wabaId}:`, subErr.response?.data || subErr.message);
+      }
+    }
+
     res.json({ message: 'Configuration updated successfully' });
   } catch (err) {
     console.error('[CONFIG] Save error:', err);
     res.status(500).json({ error: 'Failed to persist configuration' });
+  }
+});
+
+// Manual Webhook Subscription endpoint (for debugging)
+app.post('/api/subscribe-webhook', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user || !user.config.wabaId || !user.config.token) {
+      return res.status(400).json({ error: 'WABA ID and Token are required. Save your config first.' });
+    }
+
+    const { wabaId, token } = user.config;
+    
+    const subRes = await axios.post(
+      `https://graph.facebook.com/v21.0/${wabaId}/subscribed_apps`,
+      {},
+      { headers: { 'Authorization': `Bearer ${token}` } }
+    );
+
+    console.log(`[WEBHOOK SUB] Manual subscription for WABA ${wabaId}: ${JSON.stringify(subRes.data)}`);
+    res.json({ success: true, message: `WABA ${wabaId} subscribed for webhooks`, meta_response: subRes.data });
+  } catch (err) {
+    console.error(`[WEBHOOK SUB] Manual subscription failed:`, err.response?.data || err.message);
+    res.status(500).json({ error: 'Subscription failed', details: err.response?.data?.error || err.message });
   }
 });
 
@@ -1928,6 +1994,9 @@ server.listen(port, () => {
         if (connected) {
             // Resume active campaigns from DB upon successful connection
             resumeActiveCampaigns();
+            
+            // Subscribe ALL user WABAs for webhooks (critical for multi-account)
+            subscribeAllWABAs();
         }
     });
 
