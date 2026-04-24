@@ -1924,26 +1924,28 @@ async function triggerHookdeckSync() {
         
         console.log(`[HOOKDECK SYNC] Found Destination: ${destinationId}`);
 
-        // Step 2: Trigger Bulk Retry for FAILED events
-        console.log('[HOOKDECK SYNC] Triggering bulk retry for failed events...');
-        try {
-            const retryRes = await axios.post('https://api.hookdeck.com/2024-03-01/bulk/events/retry', {
-                query: {
-                    source_id: sourceId,
-                    destination_id: destinationId,
-                    status: 'FAILED'
+        // Step 2: Trigger Bulk Retry for FAILED events (messages that arrived while server was down)
+        console.log('[HOOKDECK SYNC] Recovering missed messages...');
+        
+        const statusesToRetry = ['FAILED', 'QUEUED'];
+        for (const status of statusesToRetry) {
+            try {
+                const retryRes = await axios.post('https://api.hookdeck.com/2024-03-01/bulk/events/retry', {
+                    query: {
+                        source_id: sourceId,
+                        destination_id: destinationId,
+                        status: status
+                    }
+                }, {
+                    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }
+                });
+                console.log(`[HOOKDECK SYNC] ✅ Retry triggered for ${status} events. Job ID: ${retryRes.data.id || 'N/A'}`);
+            } catch (retryErr) {
+                if (retryErr.response?.status === 422) {
+                    console.log(`[HOOKDECK SYNC] No ${status} events to retry. (Clean)`);
+                } else {
+                    console.warn(`[HOOKDECK SYNC] ${status} retry skipped:`, retryErr.response?.data?.message || retryErr.message);
                 }
-            }, {
-                headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }
-            });
-            console.log(`[HOOKDECK SYNC] Success! Retry triggered. Job ID: ${retryRes.data.id || 'Unknown'}`);
-        } catch (retryErr) {
-            // Often 422 happens if there are zero failed events to retry - we can ignore this
-            const errorMsg = retryErr.response?.data?.message || retryErr.message;
-            if (retryErr.response?.status === 422) {
-                console.log('[HOOKDECK SYNC] No failed events found to retry. (Skipping)');
-            } else {
-                console.warn('[HOOKDECK SYNC] Bulk retry skipped:', errorMsg);
             }
         }
     } catch (err) {
