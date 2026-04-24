@@ -139,7 +139,15 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-// --- AUTH ROUTES ---
+// --- DIAGNOSTIC ROOT LOGGER ---
+app.all('/', (req, res, next) => {
+    if (req.method !== 'GET') {
+        console.log(`[DEBUG] Incoming ${req.method} request to ROOT (/) from ${req.ip}. If this is a webhook, it is hitting the wrong path!`);
+    }
+    next();
+});
+
+// --- API ROUTES ---
 
 // Registration
 app.post('/auth/register', async (req, res) => {
@@ -1379,22 +1387,29 @@ app.post('/webhook', async (req, res) => {
         return res.sendStatus(200); // Silent drop for metadata without phoneId
       }
 
-      // 1. IDENTIFY USER BY PHONE ID
-      const user = await User.findOne({ 'config.phoneId': phoneId });
+      // 1. IDENTIFY USER BY PHONE ID (Trimmed for multi-tenant stability)
+      const cleanPhoneId = phoneId.toString().trim();
+      const user = await User.findOne({ 'config.phoneId': cleanPhoneId });
+      
       if (!user) {
-        console.warn(`[Webhook] Unrecognized phoneId: ${phoneId}`);
+        console.warn(`[Webhook] User NOT FOUND for Phone ID: "${cleanPhoneId}". Check your CRM Settings!`);
         return res.sendStatus(200); 
       }
+      
       const userId = user._id;
+      const username = user.username;
+      console.log(`[Webhook] Identified User: ${username} (ID: ${userId})`);
       if (changes?.statuses) {
         let statusInfo = changes.statuses[0];
         let statusString = statusInfo.status; // sent, delivered, read, failed
         let recipient = statusInfo.recipient_id;
         let wamid = statusInfo.id;
 
-        console.log(`[Webhook] Status Update: ${recipient} -> ${statusString.toUpperCase()} (ID: ${wamid}) | PhoneId: ${phoneId} | User: ${user.username}`);
+        console.log(`[Webhook] Status Update: ${recipient} -> ${statusString.toUpperCase()} (ID: ${wamid}) | PhoneId: ${cleanPhoneId} | User: ${username}`);
 
-        // UPDATE JOB MEMORY
+        if (statusInfo.errors) {
+            console.error(`[Webhook ERROR] Account ${username} reported failure:`, JSON.stringify(statusInfo.errors, null, 2));
+        }
         let mapping = wamidToJob[wamid];
         
         // Fallback to Database if not in memory (e.g. after restart)
@@ -1882,15 +1897,16 @@ async function updateHookdeckDestination(newUrl) {
         console.log(`[BRIDGE] Found destination "${destinationName}" with ID: ${resolvedId}. Updating URL...`);
 
         // Step 2: Update the resolved destination URL
-        const webhookUrl = newUrl.endsWith('/') ? `${newUrl}webhook` : `${newUrl}/webhook`;
+        // We use the base newUrl because Hookdeck appends the path (e.g. /webhook) from the source automatically
+        const baseUrl = newUrl.endsWith('/') ? newUrl.slice(0, -1) : newUrl;
         await axios.put(`https://api.hookdeck.com/2024-03-01/destinations/${resolvedId}`, {
             name: destinationName,
-            config: { url: webhookUrl }
+            config: { url: baseUrl }
         }, {
             headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }
         });
 
-        console.log(`[BRIDGE] Success! Hookdeck destination ${resolvedId} updated to: ${webhookUrl}`);
+        console.log(`[BRIDGE] Success! Hookdeck destination ${resolvedId} updated to base: ${baseUrl}`);
     } catch (err) {
         const errorData = err.response?.data ? JSON.stringify(err.response.data) : 'No extra data';
         const errorMsg = err.response?.data?.message || err.message;
