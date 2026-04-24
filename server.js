@@ -1373,6 +1373,8 @@ app.post('/webhook', async (req, res) => {
       const changes = body.entry?.[0]?.changes?.[0]?.value;
       const phoneId = changes?.metadata?.phone_number_id;
 
+      console.log(`[WEBHOOK DIAGNOSTIC] Incoming webhook for Phone ID: ${phoneId}`);
+
       if (!phoneId) {
         return res.sendStatus(200); // Silent drop for metadata without phoneId
       }
@@ -1440,14 +1442,19 @@ app.post('/webhook', async (req, res) => {
                   campaignQuery.id = jobId;
               }
 
+              // IDEMPOTENT UPDATE: Only update if the status is actually changing or not yet set
+              // This prevents issues if multiple "Fan-out" instances receive the same webhook
               Campaign.findOneAndUpdate(
-                campaignQuery,
+                { ...campaignQuery, "results.status": { $ne: result.status } },
                 { $set: { "results.$.status": result.status } }
-              ).catch(err => console.error('[Webhook] DB Sync Error:', err.message));
+              ).catch(err => {
+                  // We ignore "No document found" errors here because it likely means another instance already updated it
+                  if (err.name !== 'CastError') console.error('[Webhook] DB Sync Error:', err.message);
+              });
 
               // Real-time Status Update
               io.to(userId.toString()).emit('status_update', { jobId, phone, status: result.status });
-              console.log(`[Webhook] Updated Job ${jobId} status for ${phone} to ${result.status}`);
+              console.log(`[Webhook] [Instance: ${process.env.RENDER_INSTANCE_ID || 'Local'}] Updated Job ${jobId} for ${phone} to ${result.status}`);
             }
           }
         }
