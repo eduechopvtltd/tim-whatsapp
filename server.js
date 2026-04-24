@@ -1850,6 +1850,11 @@ async function updateHookdeckDestination(newUrl) {
         return;
     }
 
+    if (process.env.HOOKDECK_SKIP_UPDATE === 'true') {
+        console.log('[BRIDGE] Skipping Hookdeck update: HOOKDECK_SKIP_UPDATE is enabled.');
+        return;
+    }
+
     try {
         console.log(`[BRIDGE] Searching for Hookdeck destination named: "${destinationName}"...`);
         
@@ -1870,15 +1875,15 @@ async function updateHookdeckDestination(newUrl) {
         console.log(`[BRIDGE] Found destination "${destinationName}" with ID: ${resolvedId}. Updating URL...`);
 
         // Step 2: Update the resolved destination URL
-        // We use newUrl without /webhook because Hookdeck propagates the path automatically
+        const webhookUrl = newUrl.endsWith('/') ? `${newUrl}webhook` : `${newUrl}/webhook`;
         await axios.put(`https://api.hookdeck.com/2024-03-01/destinations/${resolvedId}`, {
             name: destinationName,
-            config: { url: newUrl }
+            config: { url: webhookUrl }
         }, {
             headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }
         });
 
-        console.log(`[BRIDGE] Success! Hookdeck destination ${resolvedId} updated to: ${newUrl}/webhook`);
+        console.log(`[BRIDGE] Success! Hookdeck destination ${resolvedId} updated to: ${webhookUrl}`);
     } catch (err) {
         const errorData = err.response?.data ? JSON.stringify(err.response.data) : 'No extra data';
         const errorMsg = err.response?.data?.message || err.message;
