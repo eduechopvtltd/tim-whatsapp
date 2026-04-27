@@ -1639,15 +1639,30 @@ app.post('/webhook', async (req, res) => {
         const newMsg = { id: msg.id, from: 'customer', name: profileName, text, timestamp: Date.now(), type: msg.type, mediaId, filename };
 
         try {
-            await Chat.findOneAndUpdate(
-                { userId, phone: from },
-                { $setOnInsert: { name: profileName }, $push: { messages: newMsg }, $inc: { unreadCount: 1 }, $set: { updatedAt: Date.now(), lastMessageAt: Date.now() } },
+            // Idempotent check: Only push if the message ID doesn't already exist in this chat
+            const updated = await Chat.findOneAndUpdate(
+                { 
+                    userId, 
+                    phone: from, 
+                    "messages.id": { $ne: msg.id } // Only update if this specific message ID is NOT found
+                },
+                { 
+                    $setOnInsert: { name: profileName }, 
+                    $push: { messages: newMsg }, 
+                    $inc: { unreadCount: 1 }, 
+                    $set: { updatedAt: Date.now(), lastMessageAt: Date.now() } 
+                },
                 { upsert: true, returnDocument: 'after' }
             );
-            io.to(userId.toString()).emit('new_message', { phone: from, name: profileName, text, type: msg.type });
-            sendEmailNotification(userId, { from, name: profileName, text });
+
+            // Only emit and notify if it was actually a NEW message (updated will be null if $ne condition failed)
+            if (updated) {
+                io.to(userId.toString()).emit('new_message', { phone: from, name: profileName, text, type: msg.type });
+                sendEmailNotification(userId, { from, name: profileName, text });
+            }
         } catch (dbErr) {
-            console.error('[DB ERROR] saving msg:', dbErr.message);
+            // If upsert fails because the record was created between the find and the update, that's fine.
+            if (dbErr.code !== 11000) console.error('[DB ERROR] saving msg:', dbErr.message);
         }
       }
     } catch (err) {
