@@ -1481,12 +1481,25 @@ export default function App() {
                                         </div>
                                      </div>
                                      <div className="flex items-center gap-3 shrink-0 ml-4">
-                          <div className="p-2 bg-white/5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <div className="p-2 bg-white/5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
                                            <Eye size={16} className="text-emerald-500" />
                                         </div>
                                      </div>
                                   </div>
-                                                         {filteredHistory.map(job => {
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="simple-card text-center py-20 opacity-20 border-dashed">
+                                 <Database size={40} className="mx-auto mb-4" />
+                                 <p className="text-xs font-bold uppercase tracking-widest">Metadata payload truncated</p>
+                                 <p className="text-[10px] text-slate-700 mt-2">Full delivery details available in backend logs</p>
+                               </div>
+                            )}
+                         </div>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in duration-500">
+                         {filteredHistory.map(job => {
                             const sent = job.sent || 0;
                             const failed = job.failed || 0;
                             const total = job.totalContacts || job.total || 0;
