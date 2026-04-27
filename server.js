@@ -94,6 +94,44 @@ const connectDB = async () => {
         } catch (idxErr) {
             if (idxErr.code !== 27) console.warn('[DB] Index cleanup note:', idxErr.message);
         }
+
+        // Migration: Backfill delivered and read counts for existing campaigns
+        console.log('[DB] 🔄 Starting Campaign Stats Migration...');
+        const allCampaigns = await Campaign.find({ 
+            $or: [
+                { delivered: { $exists: false } },
+                { read: { $exists: false } }
+            ] 
+        });
+        
+        for (const camp of allCampaigns) {
+            let delivered = 0;
+            let read = 0;
+            let sent = 0;
+            let failed = 0;
+            
+            camp.results.forEach(r => {
+                const s = (r.status || '').toLowerCase();
+                if (s.includes('read')) {
+                    read++;
+                    delivered++;
+                    sent++;
+                } else if (s.includes('delivered')) {
+                    delivered++;
+                    sent++;
+                } else if (s.includes('sent') || s.includes('✅')) {
+                    sent++;
+                } else if (s.includes('failed') || s.includes('❌')) {
+                    failed++;
+                }
+            });
+            
+            await Campaign.updateOne(
+                { _id: camp._id },
+                { $set: { delivered, read, sent, failed } }
+            );
+        }
+        if (allCampaigns.length > 0) console.log(`[DB] ✅ Migrated stats for ${allCampaigns.length} campaigns.`);
         
         return true;
     } catch (err) {
@@ -1520,46 +1558,78 @@ app.post('/webhook', async (req, res) => {
 
         if (mapping) {
           const { jobId, phone, userId } = mapping;
-          const userJobs = jobs[userId] || {};
           
+          const statusMap = {
+            'sent': 'Sent ✅',
+            'delivered': 'Delivered 📩',
+            'read': 'Read 👁️',
+            'failed': 'Failed ❌'
+          };
+          
+          let finalStatus = statusMap[statusString] || statusString.toUpperCase();
+          if (statusInfo.errors) {
+            const err = statusInfo.errors[0];
+            finalStatus = `Failed: ${err.message}`;
+          }
+
+          // 1. Update in-memory job if it exists (for active campaigns)
+          const userJobs = jobs[userId] || {};
           if (userJobs[jobId]) {
             const result = userJobs[jobId].results.find(r => r.phone === phone);
             if (result) {
-              const statusMap = {
-                'sent': 'Sent ✅',
-                'delivered': 'Delivered 📩',
-                'read': 'Read 👁️',
-                'failed': 'Failed ❌'
-              };
-              
-              result.status = statusMap[statusString] || statusString.toUpperCase();
-              
-              if (statusInfo.errors) {
-                const err = statusInfo.errors[0];
-                result.status = `Failed: ${err.message}`;
+              // Only increment memory counters if this is a NEW status for this message
+              if (result.status !== finalStatus) {
+                if (statusString === 'delivered' && !result.status?.includes('Delivered')) {
+                  userJobs[jobId].delivered = (userJobs[jobId].delivered || 0) + 1;
+                } else if (statusString === 'read' && !result.status?.includes('Read')) {
+                  userJobs[jobId].read = (userJobs[jobId].read || 0) + 1;
+                } else if (statusString === 'failed' && !result.status?.includes('Failed')) {
+                  userJobs[jobId].failed = (userJobs[jobId].failed || 0) + 1;
+                }
+                result.status = finalStatus;
               }
-              
-              // Also update the database if the campaign is already saved
-              // Support both numeric and string IDs for backward compatibility
-              const campaignQuery = { userId: userId, "results.phone": phone };
-              if (!isNaN(jobId)) {
-                  campaignQuery.id = Number(jobId);
-              } else {
-                  campaignQuery.id = jobId;
-              }
+            }
+          }
 
-              // IDEMPOTENT UPDATE: Only update if the status is actually changing or not yet set
-              // This prevents issues if multiple "Fan-out" instances receive the same webhook
-              Campaign.findOneAndUpdate(
-                { ...campaignQuery, "results.status": { $ne: result.status } },
-                { $set: { "results.$.status": result.status } }
-              ).catch(err => {
-                  // We ignore "No document found" errors here because it likely means another instance already updated it
+          // 2. ALWAYS update the database for persistence and history
+          const campaignQuery = { userId: userId, "results.phone": phone };
+          if (!isNaN(jobId)) {
+              campaignQuery.id = Number(jobId);
+          } else {
+              campaignQuery.id = jobId;
+          }
+
+          const updateDoc = { $set: { "results.$.status": finalStatus } };
+          if (statusString === 'delivered') {
+              updateDoc.$inc = { delivered: 1 };
+          } else if (statusString === 'read') {
+              updateDoc.$inc = { read: 1 };
+          } else if (statusString === 'failed') {
+              updateDoc.$inc = { failed: 1 };
+          }
+
+          Campaign.findOneAndUpdate(
+            { ...campaignQuery, "results.status": { $ne: finalStatus } },
+            updateDoc,
+            { new: true }
+          ).then(updatedCampaign => {
+                  if (updatedCampaign) {
+                      // Emit specific message update
+                      io.to(userId.toString()).emit('status_update', { jobId, phone, status: finalStatus });
+                      
+                      // Emit full campaign stats update for History page
+                      io.to(userId.toString()).emit('campaign_stats', { 
+                          jobId, 
+                          sent: updatedCampaign.sent,
+                          delivered: updatedCampaign.delivered,
+                          read: updatedCampaign.read,
+                          failed: updatedCampaign.failed
+                      });
+                  }
+              }).catch(err => {
                   if (err.name !== 'CastError') console.error('[Webhook] DB Sync Error:', err.message);
               });
 
-              // Real-time Status Update
-              io.to(userId.toString()).emit('status_update', { jobId, phone, status: result.status });
               console.log(`[Webhook] [Instance: ${process.env.RENDER_INSTANCE_ID || 'Local'}] Updated Job ${jobId} for ${phone} to ${result.status}`);
             }
           }

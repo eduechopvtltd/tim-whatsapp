@@ -285,6 +285,37 @@ export default function App() {
       });
     });
 
+    socket.on('campaign_stats', ({ jobId: updatedJobId, sent, delivered, read, failed }) => {
+      // Update the summary in the history list
+      setHistoryData(prev => prev.map(job => {
+        const jId = String(job.id || job._id || '');
+        if (jId === String(updatedJobId)) {
+          return { ...job, sent, delivered, read, failed };
+        }
+        return job;
+      }));
+
+      // Update the summary in the expanded detail view
+      setExpandedHistoryJob(prev => {
+        if (!prev) return null;
+        const prevId = String(prev.id || prev._id || '');
+        if (prevId === String(updatedJobId)) {
+          return { ...prev, sent, delivered, read, failed };
+        }
+        return prev;
+      });
+
+      // Update the summary in the active Status tab
+      setJobStatus(prev => {
+        if (!prev) return null;
+        const prevId = String(prev.id || prev._id || '');
+        if (prevId === String(updatedJobId)) {
+          return { ...prev, sent, delivered, read, failed };
+        }
+        return prev;
+      });
+    });
+
     socket.on('campaign_progress', ({ jobId: progJobId, status: newProgress }) => {
       // ONLY update the active campaign progress
       if (String(jobId) === String(progJobId)) {
@@ -1211,12 +1242,14 @@ export default function App() {
                 <motion.div key="status" {...PAGE_TRANSITION} className="max-w-4xl mx-auto space-y-6 lg:space-y-8">
                    {jobStatus ? (
                      <>
-                       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 lg:gap-4">
-                          <MiniStat label="Processed" value={`${jobStatus.processed || 0}/${jobStatus.totalContacts || jobStatus.total || 0}`} />
-                          <MiniStat label="Sent" value={jobStatus.results?.filter(r => r.status?.includes('Sent') || r.status?.includes('Delivered') || r.status?.includes('Read')).length || 0} color="text-emerald-500" />
-                          <MiniStat label="Failed" value={jobStatus.results?.filter(r => r.status?.includes('Failed')).length || 0} color="text-red-500" />
-                          <MiniStat label="Remaining" value={(jobStatus.totalContacts || jobStatus.total || 0) - (jobStatus.processed || 0)} />
-                       </div>
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 lg:gap-4">
+                           <MiniStat label="Total" value={jobStatus.totalContacts || jobStatus.total || 0} />
+                           <MiniStat label="Processed" value={jobStatus.processed || 0} />
+                           <MiniStat label="Sent" value={jobStatus.sent || 0} color="text-blue-500" />
+                           <MiniStat label="Delivered" value={jobStatus.delivered || 0} color="text-emerald-500" />
+                           <MiniStat label="Read" value={jobStatus.read || 0} color="text-indigo-400" />
+                           <MiniStat label="Failed" value={jobStatus.failed || 0} color="text-red-500" />
+                        </div>
                        <div className="simple-card space-y-6">
                           <div className="flex items-center justify-between flex-wrap gap-3">
                              <div className="flex items-center gap-3">
@@ -1394,22 +1427,26 @@ export default function App() {
                               </div>
                            </div>
 
-                           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 pt-8 border-t border-white/5">
+                           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 pt-8 border-t border-white/5">
                               <div className="p-5 rounded-2xl bg-white/[0.01] border border-border-dim text-center hover:bg-white/[0.03] transition-colors">
-                                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-2">Total Packets</p>
+                                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-2">Total</p>
                                  <p className="text-2xl font-bold text-white tracking-tight">{expandedHistoryJob.totalContacts || expandedHistoryJob.total || 0}</p>
                               </div>
                               <div className="p-5 rounded-2xl bg-white/[0.01] border border-border-dim text-center hover:bg-white/[0.03] transition-colors">
-                                 <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-[0.2em] mb-2">Successful</p>
-                                 <p className="text-2xl font-bold text-emerald-500 tracking-tight">{expandedHistoryJob.results ? expandedHistoryJob.results.filter(r => !r.status?.includes('Failed') && !r.status?.includes('Error')).length : expandedHistoryJob.sent || 0}</p>
+                                 <p className="text-[10px] font-bold text-blue-500 uppercase tracking-[0.2em] mb-2">Sent</p>
+                                 <p className="text-2xl font-bold text-blue-500 tracking-tight">{expandedHistoryJob.sent || 0}</p>
                               </div>
                               <div className="p-5 rounded-2xl bg-white/[0.01] border border-border-dim text-center hover:bg-white/[0.03] transition-colors">
-                                 <p className="text-[10px] font-bold text-red-500 uppercase tracking-[0.2em] mb-2">Failed Delivery</p>
-                                 <p className="text-2xl font-bold text-red-500 tracking-tight">{expandedHistoryJob.results ? expandedHistoryJob.results.filter(r => r.status?.includes('Failed') || r.status?.includes('Error')).length : expandedHistoryJob.failed || 0}</p>
+                                 <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-[0.2em] mb-2">Delivered</p>
+                                 <p className="text-2xl font-bold text-emerald-500 tracking-tight">{expandedHistoryJob.delivered || 0}</p>
                               </div>
                               <div className="p-5 rounded-2xl bg-white/[0.01] border border-border-dim text-center hover:bg-white/[0.03] transition-colors">
-                                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-2">Delivery Status</p>
-                                 <p className="text-2xl font-bold text-white tracking-tight capitalize">{expandedHistoryJob.status || 'Completed'}</p>
+                                 <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-[0.2em] mb-2">Read</p>
+                                 <p className="text-2xl font-bold text-indigo-400 tracking-tight">{expandedHistoryJob.read || 0}</p>
+                              </div>
+                              <div className="p-5 rounded-2xl bg-white/[0.01] border border-border-dim text-center hover:bg-white/[0.03] transition-colors">
+                                 <p className="text-[10px] font-bold text-red-500 uppercase tracking-[0.2em] mb-2">Failed</p>
+                                 <p className="text-2xl font-bold text-red-500 tracking-tight">{expandedHistoryJob.failed || 0}</p>
                               </div>
                            </div>
                         </div>
@@ -1428,14 +1465,14 @@ export default function App() {
                                      <div className="flex items-center gap-4 flex-1 min-w-0">
                                         <div className={cn(
                                           "w-2.5 h-2.5 rounded-full shadow-[0_0_8px_rgba(0,0,0,0.5)] shrink-0 group-hover:scale-110 transition-transform",
-                                          res.status?.includes('Sent') ? "bg-emerald-500" : res.status?.includes('Skip') ? "bg-amber-500" : "bg-red-500"
+                                          (res.status?.includes('Sent') || res.status?.includes('Delivered') || res.status?.includes('Read')) ? "bg-emerald-500" : res.status?.includes('Skip') ? "bg-amber-500" : "bg-red-500"
                                         )} />
                                         <div className="min-w-0 flex-1">
                                            <div className="flex items-baseline gap-2">
                                               <p className="text-[14px] font-bold text-white tracking-tight">{res.phone}</p>
                                               <span className={cn(
                                                  "text-[9px] font-black uppercase tracking-widest truncate max-w-[120px] md:max-w-[180px]",
-                                                 res.status?.includes('Sent') ? "text-emerald-500/70" : "text-red-500/70"
+                                                 (res.status?.includes('Sent') || res.status?.includes('Delivered') || res.status?.includes('Read')) ? "text-emerald-500/70" : "text-red-500/70"
                                                )} title={res.status}>
                                                  {res.status}
                                               </span>
@@ -1444,68 +1481,67 @@ export default function App() {
                                         </div>
                                      </div>
                                      <div className="flex items-center gap-3 shrink-0 ml-4">
-                                        <div className="p-2 bg-white/5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="p-2 bg-white/5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
                                            <Eye size={16} className="text-emerald-500" />
                                         </div>
                                      </div>
                                   </div>
-                                ))}
-                             </div>
-                           ) : (
-                             <div className="simple-card text-center py-20 opacity-20 border-dashed">
-                                <Database size={40} className="mx-auto mb-4" />
-                                <p className="text-xs font-bold uppercase tracking-widest">Metadata payload truncated</p>
-                                 <p className="text-[10px] text-slate-700 mt-2">Full delivery details available in backend logs</p>
-                              </div>
-                           )}
-                        </div>
-                     </div>
-                   ) : (
-                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in duration-500">
-                        {filteredHistory.map(job => {
-                           const sent = job.sent || job.results?.filter(r => r.status?.includes('Sent')).length || 0;
-                           const failed = job.failed || job.results?.filter(r => r.status?.includes('Failed')).length || 0;
-                           const total = job.totalContacts || job.total || 0;
-                           const rate = total > 0 ? (sent / total * 100).toFixed(0) : 0;
-                           const isRunning = job.status === 'Running';
-                           const status = job.status || 'Completed';
+                                                         {filteredHistory.map(job => {
+                            const sent = job.sent || 0;
+                            const failed = job.failed || 0;
+                            const total = job.totalContacts || job.total || 0;
+                            const rate = total > 0 ? (sent / total * 100).toFixed(0) : 0;
+                            const isRunning = job.status === 'Running';
+                            const status = job.status || 'Completed';
 
-                           return (
-                              <div key={job.id || job._id} onClick={() => handleExpandHistory(job)} className="p-5 rounded-2xl bg-bg-surface border border-border-dim/50 hover:bg-white/[0.02] hover:border-emerald-500/20 transition-all flex flex-col h-full group relative overflow-hidden">
-                                 {isRunning && (
-                                   <div className="absolute top-0 right-0 p-3">
-                                      <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-                                         <div className="w-1 h-1 rounded-full bg-emerald-500 animate-ping" />
-                                         <span className="text-[8px] font-black text-emerald-500 uppercase tracking-widest">Active</span>
-                                      </div>
-                                   </div>
-                                 )}
-                                 <div className="flex justify-between items-start mb-3">
-                                    <div className={cn(
-                                       "w-10 h-10 rounded-xl flex items-center justify-center border transition-all",
-                                       isRunning ? "bg-emerald-500 text-black border-emerald-400" : "bg-white/5 text-slate-500 border-white/5 group-hover:border-emerald-500/10 group-hover:text-emerald-500"
-                                    )}>
-                                       <PaperPlaneTilt size={18} weight={isRunning ? "fill" : "bold"} />
+                            return (
+                               <div key={job.id || job._id} onClick={() => handleExpandHistory(job)} className="p-5 rounded-2xl bg-bg-surface border border-border-dim/50 hover:bg-white/[0.02] hover:border-emerald-500/20 transition-all flex flex-col h-full group relative overflow-hidden">
+                                  {isRunning && (
+                                    <div className="absolute top-0 right-0 p-3">
+                                       <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                                          <div className="w-1 h-1 rounded-full bg-emerald-500 animate-ping" />
+                                          <span className="text-[8px] font-black text-emerald-500 uppercase tracking-widest">Active</span>
+                                       </div>
                                     </div>
-                                    <div className="text-right">
-                                       <div className={cn(
-                                          "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest inline-block border leading-normal",
-                                          status === 'Completed' ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" :
-                                          status === 'Running' ? "bg-amber-500/10 text-amber-500 border-amber-500/20" :
-                                          "bg-red-500/10 text-red-500 border-red-500/20"
-                                       )}>{status}</div>
-                                       <p className="text-[9px] font-bold text-slate-600 mt-1 uppercase tracking-tighter">#{String(job.id || job._id || '').slice(-6)}</p>
-                                    </div>
-                                 </div>
-                                 <div className="mb-4">
-                                    <h4 className="text-[14px] font-bold text-white mb-0.5 truncate tracking-tight">{job.name || job.templateName || 'Campaign'}</h4>
-                                    <p className="text-[10px] text-slate-500">{new Date(job.timestamp || job.createdAt || Date.now()).toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'})}</p>
-                                 </div>
-                                 <div className="mt-auto space-y-4">
-                                    <div className="grid grid-cols-3 gap-2 px-1">
-                                     <div className="text-center"><p className="text-[8px] font-bold text-slate-500 uppercase mb-0.5">Sent</p><p className="text-xs font-bold text-emerald-500">{sent}</p></div>
-                                     <div className="text-center"><p className="text-[8px] font-bold text-slate-500 uppercase mb-0.5">Failed</p><p className="text-xs font-bold text-red-500">{failed}</p></div>
-                                     <div className="text-center"><p className="text-[8px] font-bold text-slate-500 uppercase mb-0.5">Total</p><p className="text-xs font-bold text-white">{total}</p></div>
+                                  )}
+                                  <div className="flex justify-between items-start mb-3">
+                                     <div className={cn(
+                                        "w-10 h-10 rounded-xl flex items-center justify-center border transition-all",
+                                        isRunning ? "bg-emerald-500 text-black border-emerald-400" : "bg-white/5 text-slate-500 border-white/5 group-hover:border-emerald-500/10 group-hover:text-emerald-500"
+                                     )}>
+                                        <PaperPlaneTilt size={18} weight={isRunning ? "fill" : "bold"} />
+                                     </div>
+                                     <div className="text-right">
+                                        <div className={cn(
+                                           "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest inline-block border leading-normal",
+                                           status === 'Completed' ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" :
+                                           status === 'Running' ? "bg-amber-500/10 text-amber-500 border-amber-500/20" :
+                                           "bg-red-500/10 text-red-500 border-red-500/20"
+                                        )}>{status}</div>
+                                        <p className="text-[9px] font-bold text-slate-600 mt-1 uppercase tracking-tighter">#{String(job.id || job._id || '').slice(-6)}</p>
+                                     </div>
+                                  </div>
+                                  <div className="mb-4">
+                                     <h4 className="text-[14px] font-bold text-white mb-0.5 truncate tracking-tight">{job.name || job.templateName || 'Campaign'}</h4>
+                                     <p className="text-[10px] text-slate-500">{new Date(job.timestamp || job.createdAt || Date.now()).toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'})}</p>
+                                  </div>
+                                  <div className="mt-auto space-y-4">
+                                     <div className="grid grid-cols-2 gap-y-3 gap-x-2 px-1">
+                                      <div className="text-center border-r border-white/5"><p className="text-[8px] font-bold text-slate-500 uppercase mb-0.5">Sent</p><p className="text-xs font-bold text-blue-500">{job.sent || 0}</p></div>
+                                      <div className="text-center"><p className="text-[8px] font-bold text-slate-500 uppercase mb-0.5">Delivered</p><p className="text-xs font-bold text-emerald-500">{job.delivered || 0}</p></div>
+                                      <div className="text-center border-r border-white/5"><p className="text-[8px] font-bold text-slate-500 uppercase mb-0.5">Read</p><p className="text-xs font-bold text-indigo-400">{job.read || 0}</p></div>
+                                      <div className="text-center"><p className="text-[8px] font-bold text-slate-500 uppercase mb-0.5">Failed</p><p className="text-xs font-bold text-red-500">{job.failed || 0}</p></div>
+                                     </div>
+                                     <div className="text-center pt-2 border-t border-white/5">
+                                        <p className="text-[8px] font-bold text-slate-600 uppercase">Total Packets: <span className="text-white">{job.totalContacts || job.total || 0}</span></p>
+                                     </div>
+                                     <div className="flex items-center justify-between gap-3 pt-2">
+                                        <div className="flex-1 space-y-1.5">
+                                           <div className="h-1 bg-white/5 rounded-full overflow-hidden flex">
+                                              <div className="h-full bg-emerald-500" style={{ width: `${rate}%` }} />
+                                              <div className="h-full bg-red-500/50" style={{ width: `${total > 0 ? (failed / total * 100) : 0}%` }} />
+                                           </div>
+                                        </div>e">Total Packets: <span className="text-white">{job.totalContacts || job.total || 0}</span></p>
                                     </div>
                                     <div className="flex items-center justify-between gap-3 pt-2">
                                        <div className="flex-1 space-y-1.5">
