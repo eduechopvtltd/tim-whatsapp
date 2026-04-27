@@ -1503,256 +1503,132 @@ app.get('/webhook', async (req, res) => {
 
 // Webhook for tracking status (Multi-Tenant Aware)
 app.post('/webhook', async (req, res) => {
-  let body = req.body;
+  const body = req.body;
 
   if (body && body.object) {
     try {
       const changes = body.entry?.[0]?.changes?.[0]?.value;
       const phoneId = changes?.metadata?.phone_number_id;
 
-      console.log(`[WEBHOOK DIAGNOSTIC] Incoming webhook for Phone ID: ${phoneId}`);
-
       if (!phoneId) {
-        return res.sendStatus(200); // Silent drop for metadata without phoneId
+        return res.sendStatus(200);
       }
 
-      // 1. IDENTIFY USER BY PHONE ID (Trimmed for multi-tenant stability)
       const cleanPhoneId = phoneId.toString().trim();
       const user = await User.findOne({ 'config.phoneId': cleanPhoneId });
       
       if (!user) {
-        console.warn(`[Webhook] User NOT FOUND for Phone ID: "${cleanPhoneId}". Check your CRM Settings!`);
+        console.warn(`[Webhook] User NOT FOUND for Phone ID: "${cleanPhoneId}"`);
         return res.sendStatus(200); 
       }
       
       const userId = user._id;
       const username = user.username;
-      console.log(`[Webhook] Identified User: ${username} (ID: ${userId})`);
+
       if (changes?.statuses) {
-        let statusInfo = changes.statuses[0];
-        let statusString = statusInfo.status; // sent, delivered, read, failed
-        let recipient = statusInfo.recipient_id;
-        let wamid = statusInfo.id;
+        const statusInfo = changes.statuses[0];
+        const statusString = statusInfo.status;
+        const recipient = statusInfo.recipient_id;
+        const wamid = statusInfo.id;
 
-        console.log(`[Webhook] Status Update: ${recipient} -> ${statusString.toUpperCase()} (ID: ${wamid}) | PhoneId: ${cleanPhoneId} | User: ${username}`);
+        console.log(`[Webhook] Status: ${recipient} -> ${statusString.toUpperCase()} | User: ${username}`);
 
-        if (statusInfo.errors) {
-            console.error(`[Webhook ERROR] Account ${username} reported failure:`, JSON.stringify(statusInfo.errors, null, 2));
-        }
         let mapping = wamidToJob[wamid];
-        
-        // Fallback to Database if not in memory (e.g. after restart)
         if (!mapping) {
-          console.log(`[Webhook] ${wamid} not in memory, looking up in DB...`);
           const dbMapping = await WamidMapping.findOne({ wamid });
           if (dbMapping) {
-            mapping = { 
-              jobId: dbMapping.jobId, 
-              phone: dbMapping.phone, 
-              userId: dbMapping.userId 
-            };
-            // Restore to memory for speed
+            mapping = { jobId: dbMapping.jobId, phone: dbMapping.phone, userId: dbMapping.userId };
             wamidToJob[wamid] = mapping;
           }
         }
 
         if (mapping) {
-          const { jobId, phone, userId } = mapping;
-          
-          const statusMap = {
-            'sent': 'Sent ✅',
-            'delivered': 'Delivered 📩',
-            'read': 'Read 👁️',
-            'failed': 'Failed ❌'
-          };
-          
+          const { jobId, phone } = mapping;
+          const statusMap = { 'sent': 'Sent ✅', 'delivered': 'Delivered 📩', 'read': 'Read 👁️', 'failed': 'Failed ❌' };
           let finalStatus = statusMap[statusString] || statusString.toUpperCase();
+          
           if (statusInfo.errors) {
-            const err = statusInfo.errors[0];
-            finalStatus = `Failed: ${err.message}`;
+            finalStatus = `Failed: ${statusInfo.errors[0].message}`;
           }
 
-          // 1. Update in-memory job if it exists (for active campaigns)
+          // 1. Update Memory
           const userJobs = jobs[userId] || {};
           if (userJobs[jobId]) {
             const result = userJobs[jobId].results.find(r => r.phone === phone);
-            if (result) {
-              // Only increment memory counters if this is a NEW status for this message
-              if (result.status !== finalStatus) {
-                if (statusString === 'delivered' && !result.status?.includes('Delivered')) {
-                  userJobs[jobId].delivered = (userJobs[jobId].delivered || 0) + 1;
-                } else if (statusString === 'read' && !result.status?.includes('Read')) {
-                  userJobs[jobId].read = (userJobs[jobId].read || 0) + 1;
-                } else if (statusString === 'failed' && !result.status?.includes('Failed')) {
-                  userJobs[jobId].failed = (userJobs[jobId].failed || 0) + 1;
-                }
-                result.status = finalStatus;
-              }
+            if (result && result.status !== finalStatus) {
+              if (statusString === 'delivered' && !result.status?.includes('Delivered')) userJobs[jobId].delivered = (userJobs[jobId].delivered || 0) + 1;
+              else if (statusString === 'read' && !result.status?.includes('Read')) userJobs[jobId].read = (userJobs[jobId].read || 0) + 1;
+              else if (statusString === 'failed' && !result.status?.includes('Failed')) userJobs[jobId].failed = (userJobs[jobId].failed || 0) + 1;
+              result.status = finalStatus;
             }
           }
 
-          // 2. ALWAYS update the database for persistence and history
-          const campaignQuery = { userId: userId, "results.phone": phone };
-          if (!isNaN(jobId)) {
-              campaignQuery.id = Number(jobId);
-          } else {
-              campaignQuery.id = jobId;
-          }
-
+          // 2. Update DB
+          const campaignQuery = { userId, id: !isNaN(jobId) ? Number(jobId) : jobId, "results.phone": phone };
           const updateDoc = { $set: { "results.$.status": finalStatus } };
-          if (statusString === 'delivered') {
-              updateDoc.$inc = { delivered: 1 };
-          } else if (statusString === 'read') {
-              updateDoc.$inc = { read: 1 };
-          } else if (statusString === 'failed') {
-              updateDoc.$inc = { failed: 1 };
-          }
+          if (statusString === 'delivered') updateDoc.$inc = { delivered: 1 };
+          else if (statusString === 'read') updateDoc.$inc = { read: 1 };
+          else if (statusString === 'failed') updateDoc.$inc = { failed: 1 };
 
-          Campaign.findOneAndUpdate(
-            { ...campaignQuery, "results.status": { $ne: finalStatus } },
-            updateDoc,
-            { new: true }
-          ).then(updatedCampaign => {
-                  if (updatedCampaign) {
-                      // Emit specific message update
-                      io.to(userId.toString()).emit('status_update', { jobId, phone, status: finalStatus });
-                      
-                      // Emit full campaign stats update for History page
-                      io.to(userId.toString()).emit('campaign_stats', { 
-                          jobId, 
-                          sent: updatedCampaign.sent,
-                          delivered: updatedCampaign.delivered,
-                          read: updatedCampaign.read,
-                          failed: updatedCampaign.failed
-                      });
-                  }
-              }).catch(err => {
-                  if (err.name !== 'CastError') console.error('[Webhook] DB Sync Error:', err.message);
-              });
-
-              console.log(`[Webhook] [Instance: ${process.env.RENDER_INSTANCE_ID || 'Local'}] Updated Job ${jobId} for ${phone} to ${result.status}`);
-            }
-          }
+          Campaign.findOneAndUpdate({ ...campaignQuery, "results.status": { $ne: finalStatus } }, updateDoc, { new: true })
+            .then(updated => {
+              if (updated) {
+                io.to(userId.toString()).emit('status_update', { jobId, phone, status: finalStatus });
+                io.to(userId.toString()).emit('campaign_stats', { jobId, sent: updated.sent, delivered: updated.delivered, read: updated.read, failed: updated.failed });
+              }
+            }).catch(e => console.error('[Webhook] DB Error:', e.message));
         }
 
         if (statusInfo.errors) {
-          console.error(`[Webhook] ERROR for ${recipient}:`, JSON.stringify(statusInfo.errors, null, 2));
-          // If we have a failure, let's map it to something readable if possible
-          const err = statusInfo.errors[0];
-          console.log(`[Webhook] Failure Reason: ${err.message} (Code: ${err.code})`);
+          console.error(`[Webhook] ERROR for ${recipient}:`, JSON.stringify(statusInfo.errors));
         }
       } else if (changes?.messages) {
-        // Incoming message received
         const msg = changes.messages[0];
         const from = msg.from;
-        
-        // Try to find the name from Meta profile, or from our internal job history
         let profileName = changes.contacts?.[0]?.profile?.name;
+        
         if (!profileName) {
-            // Check if we have this number in any of THIS USER's recent jobs
             const userJobs = jobs[userId] || {};
             for (const jId in userJobs) {
                 const found = userJobs[jId].results.find(r => r.phone === from);
-                if (found && found.name) {
-                    profileName = found.name;
-                    break;
-                }
+                if (found?.name) { profileName = found.name; break; }
             }
         }
-        if (!profileName) profileName = from; // Fallback to phone number
+        if (!profileName) profileName = from;
         
         let text = '';
-        const msgType = msg.type;
         let mediaId = null;
         let filename = null;
         
-        switch (msgType) {
-            case 'text':
-                text = msg.text?.body || '';
-                break;
-            case 'image':
-                text = msg.image?.caption || '📷 Image';
-                mediaId = msg.image?.id;
-                break;
-            case 'video':
-                text = msg.video?.caption || '🎥 Video';
-                mediaId = msg.video?.id;
-                break;
-            case 'document':
-                text = msg.document?.caption || msg.document?.filename || '📄 Document';
-                mediaId = msg.document?.id;
-                filename = msg.document?.filename;
-                break;
-            case 'audio':
-                text = '🔊 Audio message';
-                mediaId = msg.audio?.id;
-                break;
-            case 'sticker':
-                text = '🏷️ Sticker';
-                mediaId = msg.sticker?.id;
-                break;
-            case 'location':
-                text = '📍 Location';
-                break;
-            case 'button':
-                text = msg.button?.text || 'Interactive Reply';
-                break;
-            case 'interactive':
-                text = msg.interactive?.button_reply?.title || 
-                       msg.interactive?.list_reply?.title || 
-                       '[Interactive]';
-                break;
-            default:
-                text = `[${msgType} message]`;
+        switch (msg.type) {
+            case 'text': text = msg.text?.body || ''; break;
+            case 'image': text = msg.image?.caption || '📷 Image'; mediaId = msg.image?.id; break;
+            case 'video': text = msg.video?.caption || '🎥 Video'; mediaId = msg.video?.id; break;
+            case 'document': text = msg.document?.caption || msg.document?.filename || '📄 Document'; mediaId = msg.document?.id; filename = msg.document?.filename; break;
+            case 'audio': text = '🔊 Audio message'; mediaId = msg.audio?.id; break;
+            case 'sticker': text = '🏷️ Sticker'; mediaId = msg.sticker?.id; break;
+            case 'location': text = '📍 Location'; break;
+            case 'button': text = msg.button?.text || 'Interactive Reply'; break;
+            case 'interactive': text = msg.interactive?.button_reply?.title || msg.interactive?.list_reply?.title || '[Interactive]'; break;
+            default: text = `[${msg.type} message]`;
         }
         
-        console.log(`[Webhook] Message from ${from} (${profileName}): ${text}`);
-        
-        const newMsg = {
-          id: msg.id,
-          from: 'customer',
-          name: profileName,
-          text: text,
-          timestamp: Date.now(),
-          type: msg.type,
-          mediaId,
-          filename
-        };
+        const newMsg = { id: msg.id, from: 'customer', name: profileName, text, timestamp: Date.now(), type: msg.type, mediaId, filename };
 
-        // PERSIST TO CLOUD (Scoped to User)
         try {
             await Chat.findOneAndUpdate(
-                { userId: userId, phone: from },
-                { 
-                    $setOnInsert: { name: profileName },
-                    $push: { messages: newMsg },
-                    $inc: { unreadCount: 1 },
-                    $set: { updatedAt: Date.now(), lastMessageAt: Date.now() }
-                },
+                { userId, phone: from },
+                { $setOnInsert: { name: profileName }, $push: { messages: newMsg }, $inc: { unreadCount: 1 }, $set: { updatedAt: Date.now(), lastMessageAt: Date.now() } },
                 { upsert: true }
             );
-            
-            // Real-time notification for Inbox
-            io.to(userId.toString()).emit('new_message', { 
-                phone: from, 
-                name: profileName, 
-                text: text,
-                type: msg.type
-            });
-            
-            // TRIGGER EMAIL NOTIFICATION
-            sendEmailNotification(userId, {
-                from: from,
-                name: profileName,
-                text: text
-            });
-            
+            io.to(userId.toString()).emit('new_message', { phone: from, name: profileName, text, type: msg.type });
+            sendEmailNotification(userId, { from, name: profileName, text });
         } catch (dbErr) {
-            console.error('[DB ERROR] Failed to save incoming message:', dbErr.message);
+            console.error('[DB ERROR] saving msg:', dbErr.message);
         }
       }
-    } catch (parseErr) {
-      console.error('[Webhook] Error parsing body:', parseErr.message);
+    } catch (err) {
+      console.error('[Webhook] Global Error:', err.message);
     }
     res.sendStatus(200);
   } else {
