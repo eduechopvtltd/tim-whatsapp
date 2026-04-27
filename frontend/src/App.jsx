@@ -1554,38 +1554,29 @@ export default function App() {
                                               <div className="h-full bg-emerald-500" style={{ width: `${rate}%` }} />
                                               <div className="h-full bg-red-500/50" style={{ width: `${total > 0 ? (failed / total * 100) : 0}%` }} />
                                            </div>
-                                        </div>e">Total Packets: <span className="text-white">{job.totalContacts || job.total || 0}</span></p>
-                                    </div>
-                                    <div className="flex items-center justify-between gap-3 pt-2">
-                                       <div className="flex-1 space-y-1.5">
-                                          <div className="h-1 bg-white/5 rounded-full overflow-hidden flex">
-                                             <div className="h-full bg-emerald-500" style={{ width: `${rate}%` }} />
-                                             <div className="h-full bg-red-500/50" style={{ width: `${total > 0 ? (failed / total * 100) : 0}%` }} />
-                                          </div>
-                                       </div>
-                                       <div className="flex items-center gap-3 shrink-0">
-                                          <span className="text-[10px] font-black text-emerald-500">{rate}%</span>
-                                          <button onClick={(e) => { e.stopPropagation(); handleExportHistoryCSV(job); }} className="p-1.5 bg-white/5 border border-border-dim rounded-lg text-slate-500 hover:text-emerald-500 transition-all"><DownloadSimple size={14} /></button>
-                                       </div>
-                                    </div>
-                                 </div>
+                                        </div>
+                                        <div className="flex items-center gap-3 shrink-0">
+                                           <span className="text-[10px] font-black text-emerald-500">{rate}%</span>
+                                           <button onClick={(e) => { e.stopPropagation(); handleExportHistoryCSV(job); }} className="p-1.5 bg-white/5 border border-border-dim rounded-lg text-slate-500 hover:text-emerald-500 transition-all"><DownloadSimple size={14} /></button>
+                                        </div>
+                                     </div>
+                                  </div>
+                               </div>
+                            );
+                         })}
+                         {filteredHistory.length === 0 && (
+                           <div className="col-span-full py-32 text-center animate-in zoom-in duration-300">
+                              <div className="w-20 h-20 bg-white/[0.02] border border-dashed border-border-dim rounded-full flex items-center justify-center mx-auto mb-6">
+                                 <Clock size={40} className="text-slate-800" />
                               </div>
-                           );
-                        })}
-
-                        {filteredHistory.length === 0 && (
-                          <div className="col-span-full py-32 text-center animate-in zoom-in duration-300">
-                             <div className="w-20 h-20 bg-white/[0.02] border border-dashed border-border-dim rounded-full flex items-center justify-center mx-auto mb-6">
-                                <Clock size={40} className="text-slate-800" />
-                             </div>
-                             <h4 className="text-sm font-bold text-slate-600 uppercase tracking-[0.4em] mb-2">No Matching Records</h4>
-                             <p className="text-[10px] text-slate-700 max-w-xs mx-auto">Try adjusting your search query or filters to find specific campaigns.</p>
-                          </div>
-                        )}
-                     </div>
-                   )}
-                </motion.div>
-              )}
+                              <h4 className="text-sm font-bold text-slate-600 uppercase tracking-[0.4em] mb-2">No Matching Records</h4>
+                              <p className="text-[10px] text-slate-700 max-w-xs mx-auto">Try adjusting your search query or filters to find specific campaigns.</p>
+                           </div>
+                         )}
+                      </div>
+                    )}
+                 </motion.div>
+               )}
 
               {/* ═══ INBOX TAB ═══ */}
               {activeTab === 'inbox' && (
