@@ -1543,18 +1543,30 @@ app.post('/webhook', async (req, res) => {
             mapping = { jobId: dbMapping.jobId, phone: dbMapping.phone, userId: dbMapping.userId };
             wamidToJob[wamid] = mapping;
           } else {
-            // 2. Deep Search: Scan recent campaigns for this user (Slower but reliable for repair)
+            // 2. Deep Search: Scan recent campaigns for this user
             console.log(`[Webhook] Deep search for WAMID: ${wamid}...`);
-            const campaign = await Campaign.findOne({ 
-                userId, 
-                "results.wamid": wamid 
-            });
+            let campaign = await Campaign.findOne({ userId, "results.wamid": wamid });
+            
+            // Legacy Fallback: If no WAMID match, find a recent campaign with this phone
+            if (!campaign) {
+                const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+                campaign = await Campaign.findOne({ 
+                    userId, 
+                    createdAt: { $gte: yesterday },
+                    "results.phone": recipient 
+                }).sort({ createdAt: -1 }); // Get the most recent one if multiple exist
+                
+                if (campaign) console.log(`[Webhook] 🔍 Found Legacy Campaign via Phone: ${campaign.id}`);
+            }
+
             if (campaign) {
-                const found = campaign.results.find(r => r.wamid === wamid);
-                mapping = { jobId: campaign.id, phone: found.phone, userId };
-                wamidToJob[wamid] = mapping; // Cache it
-                // Create mapping for next time
-                new WamidMapping({ wamid, userId, jobId: campaign.id, phone: found.phone }).save().catch(() => {});
+                const found = campaign.results.find(r => r.wamid === wamid || r.phone === recipient);
+                if (found) {
+                    mapping = { jobId: campaign.id, phone: found.phone, userId };
+                    wamidToJob[wamid] = mapping; // Cache it
+                    // Create mapping for next time
+                    new WamidMapping({ wamid, userId, jobId: campaign.id, phone: found.phone }).save().catch(() => {});
+                }
             }
           }
         }
@@ -1580,8 +1592,9 @@ app.post('/webhook', async (req, res) => {
             }
           }
 
-          // 2. Update DB - Smart Update (WAMID fallback to Phone for legacy campaigns)
-          const campaignIdQuery = { userId, id: !isNaN(jobId) ? Number(jobId) : jobId };
+          // 2. Update DB - Smart Update (Flexible ID + WAMID fallback to Phone)
+          const jobIdVal = !isNaN(jobId) ? Number(jobId) : jobId;
+          const campaignIdQuery = { userId, $or: [{ id: jobIdVal }, { id: String(jobIdVal) }] };
           const updateDoc = { $set: { "results.$.status": finalStatus } };
           
           if (statusString === 'delivered') {
@@ -1592,6 +1605,8 @@ app.post('/webhook', async (req, res) => {
               updateDoc.$inc = { failed: 1, sent: -1 };
           }
           
+          console.log(`[Webhook] Syncing ${phone} for Job ${jobIdVal} (${statusString})...`);
+
           // Try to update by WAMID first (Precision)
           let updated = await Campaign.findOneAndUpdate(
             { ...campaignIdQuery, "results.wamid": wamid, "results.status": { $ne: finalStatus } },
@@ -1599,10 +1614,12 @@ app.post('/webhook', async (req, res) => {
             { returnDocument: 'after' }
           );
 
+          if (updated) {
+              console.log(`[Webhook] ✅ WAMID Match: Updated counters for Job ${jobIdVal}`);
+          }
+
           // Fallback: If not found by WAMID, try by Phone (Legacy Support)
           if (!updated) {
-            // We search for the record by phone that DOES NOT have a WAMID yet, or matches this status
-            // This prevents overwriting other records for the same phone if possible
             updated = await Campaign.findOneAndUpdate(
               { 
                 ...campaignIdQuery, 
@@ -1610,16 +1627,22 @@ app.post('/webhook', async (req, res) => {
                 "results.status": { $ne: finalStatus }
               },
               { 
-                ...updateDoc,
-                $set: { "results.$.wamid": wamid, "results.$.status": finalStatus } // Patch the WAMID for future use
+                $set: { 
+                    "results.$.wamid": wamid, 
+                    "results.$.status": finalStatus 
+                },
+                ...(updateDoc.$inc ? { $inc: updateDoc.$inc } : {}) // Safely merge increments
               },
               { returnDocument: 'after' }
             );
+            if (updated) console.log(`[Webhook] 🛠️ Phone Match (Legacy): Patched WAMID for ${phone} in Job ${jobIdVal}`);
           }
 
           if (updated) {
-            io.to(userId.toString()).emit('status_update', { jobId, phone, status: finalStatus });
-            io.to(userId.toString()).emit('campaign_stats', { jobId, sent: updated.sent, delivered: updated.delivered, read: updated.read, failed: updated.failed });
+            io.to(userId.toString()).emit('status_update', { jobId: jobIdVal, phone, status: finalStatus });
+            io.to(userId.toString()).emit('campaign_stats', { jobId: jobIdVal, sent: updated.sent, delivered: updated.delivered, read: updated.read, failed: updated.failed });
+          } else {
+            console.log(`[Webhook] ℹ️ No update needed (already synced or not found) for ${phone}`);
           }
         }
 
