@@ -1580,8 +1580,8 @@ app.post('/webhook', async (req, res) => {
             }
           }
 
-          // 2. Update DB - Use unique WAMID for pinpoint accuracy
-          const campaignQuery = { userId, id: !isNaN(jobId) ? Number(jobId) : jobId, "results.wamid": wamid };
+          // 2. Update DB - Smart Update (WAMID fallback to Phone for legacy campaigns)
+          const campaignIdQuery = { userId, id: !isNaN(jobId) ? Number(jobId) : jobId };
           const updateDoc = { $set: { "results.$.status": finalStatus } };
           
           if (statusString === 'delivered') {
@@ -1589,17 +1589,43 @@ app.post('/webhook', async (req, res) => {
           } else if (statusString === 'read') {
               updateDoc.$inc = { read: 1 };
           } else if (statusString === 'failed') {
-              // Move from Sent bucket to Failed bucket
               updateDoc.$inc = { failed: 1, sent: -1 };
           }
+          
+          // Try to update by WAMID first (Precision)
+          let updated = await Campaign.findOneAndUpdate(
+            { ...campaignIdQuery, "results.wamid": wamid, "results.status": { $ne: finalStatus } },
+            updateDoc,
+            { returnDocument: 'after' }
+          );
 
-          Campaign.findOneAndUpdate({ ...campaignQuery, "results.status": { $ne: finalStatus } }, updateDoc, { returnDocument: 'after' })
-            .then(updated => {
-              if (updated) {
-                io.to(userId.toString()).emit('status_update', { jobId, phone, status: finalStatus });
-                io.to(userId.toString()).emit('campaign_stats', { jobId, sent: updated.sent, delivered: updated.delivered, read: updated.read, failed: updated.failed });
-              }
-            }).catch(e => console.error('[Webhook] DB Error:', e.message));
+          // Fallback: If not found by WAMID, try by Phone (Legacy Support)
+          if (!updated) {
+            // We search for the record by phone that DOES NOT have a WAMID yet, or matches this status
+            // This prevents overwriting other records for the same phone if possible
+            updated = await Campaign.findOneAndUpdate(
+              { 
+                ...campaignIdQuery, 
+                "results.phone": phone,
+                "results.status": { $ne: finalStatus }
+              },
+              { 
+                ...updateDoc,
+                $set: { "results.$.wamid": wamid, "results.$.status": finalStatus } // Patch the WAMID for future use
+              },
+              { returnDocument: 'after' }
+            );
+          }
+
+          if (updated) {
+            io.to(userId.toString()).emit('status_update', { jobId, phone, status: finalStatus });
+            io.to(userId.toString()).emit('campaign_stats', { jobId, sent: updated.sent, delivered: updated.delivered, read: updated.read, failed: updated.failed });
+          } else {
+            // If still not updated, it might be a duplicate webhook or a truly missing record
+            // console.log(`[Webhook] No update needed for ${phone} in job ${jobId}`);
+          }
+        } catch (webhookErr) {
+            console.error('[Webhook] Update Error:', webhookErr.message);
         }
 
         if (statusInfo.errors) {
