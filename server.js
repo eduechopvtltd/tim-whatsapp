@@ -1620,12 +1620,7 @@ app.post('/webhook', async (req, res) => {
           if (updated) {
             io.to(userId.toString()).emit('status_update', { jobId, phone, status: finalStatus });
             io.to(userId.toString()).emit('campaign_stats', { jobId, sent: updated.sent, delivered: updated.delivered, read: updated.read, failed: updated.failed });
-          } else {
-            // If still not updated, it might be a duplicate webhook or a truly missing record
-            // console.log(`[Webhook] No update needed for ${phone} in job ${jobId}`);
           }
-        } catch (webhookErr) {
-            console.error('[Webhook] Update Error:', webhookErr.message);
         }
 
         if (statusInfo.errors) {
