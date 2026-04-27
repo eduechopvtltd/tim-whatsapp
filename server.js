@@ -1580,8 +1580,8 @@ app.post('/webhook', async (req, res) => {
             }
           }
 
-          // 2. Update DB
-          const campaignQuery = { userId, id: !isNaN(jobId) ? Number(jobId) : jobId, "results.phone": phone };
+          // 2. Update DB - Use unique WAMID for pinpoint accuracy
+          const campaignQuery = { userId, id: !isNaN(jobId) ? Number(jobId) : jobId, "results.wamid": wamid };
           const updateDoc = { $set: { "results.$.status": finalStatus } };
           
           if (statusString === 'delivered') {
@@ -1593,7 +1593,7 @@ app.post('/webhook', async (req, res) => {
               updateDoc.$inc = { failed: 1, sent: -1 };
           }
 
-          Campaign.findOneAndUpdate({ ...campaignQuery, "results.status": { $ne: finalStatus } }, updateDoc, { new: true })
+          Campaign.findOneAndUpdate({ ...campaignQuery, "results.status": { $ne: finalStatus } }, updateDoc, { returnDocument: 'after' })
             .then(updated => {
               if (updated) {
                 io.to(userId.toString()).emit('status_update', { jobId, phone, status: finalStatus });
@@ -1603,7 +1603,7 @@ app.post('/webhook', async (req, res) => {
         }
 
         if (statusInfo.errors) {
-          console.error(`[Webhook] ERROR for ${recipient}:`, JSON.stringify(statusInfo.errors));
+          console.log(`[Webhook] WhatsApp Error for ${recipient}:`, JSON.stringify(statusInfo.errors));
         }
       } else if (changes?.messages) {
         const msg = changes.messages[0];
@@ -1642,7 +1642,7 @@ app.post('/webhook', async (req, res) => {
             await Chat.findOneAndUpdate(
                 { userId, phone: from },
                 { $setOnInsert: { name: profileName }, $push: { messages: newMsg }, $inc: { unreadCount: 1 }, $set: { updatedAt: Date.now(), lastMessageAt: Date.now() } },
-                { upsert: true }
+                { upsert: true, returnDocument: 'after' }
             );
             io.to(userId.toString()).emit('new_message', { phone: from, name: profileName, text, type: msg.type });
             sendEmailNotification(userId, { from, name: profileName, text });
