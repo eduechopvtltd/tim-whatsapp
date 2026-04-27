@@ -95,15 +95,11 @@ const connectDB = async () => {
             if (idxErr.code !== 27) console.warn('[DB] Index cleanup note:', idxErr.message);
         }
 
-        // Migration: Backfill delivered and read counts for existing campaigns
-        console.log('[DB] 🔄 Starting Campaign Stats Migration...');
-        const allCampaigns = await Campaign.find({ 
-            $or: [
-                { delivered: { $exists: false } },
-                { read: { $exists: false } }
-            ] 
-        });
+        // Migration: Recalculate and synchronize all campaign stats from their results arrays
+        console.log('[DB] 🔄 Synchronizing Campaign Stats with detailed results...');
+        const allCampaigns = await Campaign.find({});
         
+        let migrationCount = 0;
         for (const camp of allCampaigns) {
             let delivered = 0;
             let read = 0;
@@ -123,15 +119,21 @@ const connectDB = async () => {
                     sent++;
                 } else if (s.includes('failed') || s.includes('❌')) {
                     failed++;
+                } else if (s.includes('pending')) {
+                    // Do nothing for pending
                 }
             });
             
-            await Campaign.updateOne(
-                { _id: camp._id },
-                { $set: { delivered, read, sent, failed } }
-            );
+            // Only update if there's a discrepancy to save IO
+            if (camp.delivered !== delivered || camp.read !== read || camp.sent !== sent || camp.failed !== failed) {
+                await Campaign.updateOne(
+                    { _id: camp._id },
+                    { $set: { delivered, read, sent, failed } }
+                );
+                migrationCount++;
+            }
         }
-        if (allCampaigns.length > 0) console.log(`[DB] ✅ Migrated stats for ${allCampaigns.length} campaigns.`);
+        console.log(`[DB] ✅ Database synchronization complete. Repaired ${migrationCount} campaigns.`);
         
         return true;
     } catch (err) {
@@ -1535,10 +1537,25 @@ app.post('/webhook', async (req, res) => {
 
         let mapping = wamidToJob[wamid];
         if (!mapping) {
+          // 1. Try WamidMapping collection (Fast)
           const dbMapping = await WamidMapping.findOne({ wamid });
           if (dbMapping) {
             mapping = { jobId: dbMapping.jobId, phone: dbMapping.phone, userId: dbMapping.userId };
             wamidToJob[wamid] = mapping;
+          } else {
+            // 2. Deep Search: Scan recent campaigns for this user (Slower but reliable for repair)
+            console.log(`[Webhook] Deep search for WAMID: ${wamid}...`);
+            const campaign = await Campaign.findOne({ 
+                userId, 
+                "results.wamid": wamid 
+            });
+            if (campaign) {
+                const found = campaign.results.find(r => r.wamid === wamid);
+                mapping = { jobId: campaign.id, phone: found.phone, userId };
+                wamidToJob[wamid] = mapping; // Cache it
+                // Create mapping for next time
+                new WamidMapping({ wamid, userId, jobId: campaign.id, phone: found.phone }).save().catch(() => {});
+            }
           }
         }
 
@@ -1566,9 +1583,15 @@ app.post('/webhook', async (req, res) => {
           // 2. Update DB
           const campaignQuery = { userId, id: !isNaN(jobId) ? Number(jobId) : jobId, "results.phone": phone };
           const updateDoc = { $set: { "results.$.status": finalStatus } };
-          if (statusString === 'delivered') updateDoc.$inc = { delivered: 1 };
-          else if (statusString === 'read') updateDoc.$inc = { read: 1 };
-          else if (statusString === 'failed') updateDoc.$inc = { failed: 1 };
+          
+          if (statusString === 'delivered') {
+              updateDoc.$inc = { delivered: 1 };
+          } else if (statusString === 'read') {
+              updateDoc.$inc = { read: 1 };
+          } else if (statusString === 'failed') {
+              // Move from Sent bucket to Failed bucket
+              updateDoc.$inc = { failed: 1, sent: -1 };
+          }
 
           Campaign.findOneAndUpdate({ ...campaignQuery, "results.status": { $ne: finalStatus } }, updateDoc, { new: true })
             .then(updated => {
@@ -1870,27 +1893,31 @@ async function triggerHookdeckSync() {
         
         console.log(`[HOOKDECK SYNC] Found Destination: ${destinationId}`);
 
-        // Step 2: Trigger Bulk Retry for FAILED events (messages that arrived while server was down)
-        console.log('[HOOKDECK SYNC] Recovering missed messages...');
+        // Step 2: Trigger Bulk Retry for FAILED and SUCCESSFUL events 
+        // (Recovering missed updates from when server was down or had the memory bug)
+        console.log('[HOOKDECK SYNC] Recovering missed messages (last 24h)...');
         
-        const statusesToRetry = ['FAILED', 'QUEUED'];
+        const statusesToRetry = ['FAILED', 'QUEUED', 'SUCCESSFUL'];
+        const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        
         for (const status of statusesToRetry) {
             try {
                 const retryRes = await axios.post('https://api.hookdeck.com/2024-03-01/bulk/events/retry', {
                     query: {
                         source_id: sourceId,
                         destination_id: destinationId,
-                        status: status
+                        status: status,
+                        last_attempt_at: { $gte: yesterday } // Only recent ones to avoid duplicates/overload
                     }
                 }, {
                     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }
                 });
-                console.log(`[HOOKDECK SYNC] ✅ Retry triggered for ${status} events. Job ID: ${retryRes.data.id || 'N/A'}`);
+                console.log(`[HOOKDECK SYNC] ✅ Bulk retry triggered for ${status} events. ID: ${retryRes.data.id || 'N/A'}`);
             } catch (retryErr) {
                 if (retryErr.response?.status === 422) {
-                    console.log(`[HOOKDECK SYNC] No ${status} events to retry. (Clean)`);
+                    console.log(`[HOOKDECK SYNC] No ${status} events found to retry in the last 24h.`);
                 } else {
-                    console.warn(`[HOOKDECK SYNC] ${status} retry skipped:`, retryErr.response?.data?.message || retryErr.message);
+                    console.warn(`[HOOKDECK SYNC] ${status} retry error:`, retryErr.response?.data?.message || retryErr.message);
                 }
             }
         }
