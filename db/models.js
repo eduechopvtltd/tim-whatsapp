@@ -35,6 +35,7 @@ const ChatSchema = new mongoose.Schema({
     name: { type: String },
     lastMessageAt: { type: Date, default: Date.now },
     messages: [{
+        id: String, // WhatsApp Message ID (WAMID) for deduplication
         from: String,
         text: String,
         timestamp: String,
