@@ -1632,7 +1632,7 @@ app.post('/webhook', async (req, res) => {
           );
 
           if (resUpdate) {
-              // Only if result was actually updated, increment the main campaign counters
+              // Path A: New Normalized Campaign
               const campaignInc = {};
               if (statusString === 'delivered') campaignInc.delivered = 1;
               else if (statusString === 'read') campaignInc.read = 1;
@@ -1653,10 +1653,37 @@ app.post('/webhook', async (req, res) => {
                       read: updatedSummary.read, 
                       failed: updatedSummary.failed 
                   });
-                  console.log(`[Webhook] ✅ Updated counters for Job ${jobIdVal}`);
+                  console.log(`[Webhook] ✅ Updated counters (Normalized) for Job ${jobIdVal}`);
               }
           } else {
-              console.log(`[Webhook] ℹ️ Already synced or record not found for ${phone}`);
+              // Path B: Legacy Campaign Fallback (Update embedded results array)
+              const updateDoc = { $set: { "results.$.status": finalStatus } };
+              const campaignInc = {};
+              if (statusString === 'delivered') campaignInc.delivered = 1;
+              else if (statusString === 'read') campaignInc.read = 1;
+              else if (statusString === 'failed') { campaignInc.failed = 1; campaignInc.sent = -1; }
+              
+              if (Object.keys(campaignInc).length > 0) updateDoc.$inc = campaignInc;
+
+              const updatedLegacy = await Campaign.findOneAndUpdate(
+                  { ...campaignIdQuery, "results.phone": phone, "results.status": { $ne: finalStatus } },
+                  updateDoc,
+                  { returnDocument: 'after' }
+              );
+
+              if (updatedLegacy) {
+                  io.to(userId.toString()).emit('status_update', { jobId: jobIdVal, phone, status: finalStatus });
+                  io.to(userId.toString()).emit('campaign_stats', { 
+                      jobId: jobIdVal, 
+                      sent: updatedLegacy.sent, 
+                      delivered: updatedLegacy.delivered, 
+                      read: updatedLegacy.read, 
+                      failed: updatedLegacy.failed 
+                  });
+                  console.log(`[Webhook] 🛠️ Updated counters (Legacy Fallback) for Job ${jobIdVal}`);
+              } else {
+                  console.log(`[Webhook] ℹ️ No update needed for ${phone} in Job ${jobIdVal}`);
+              }
           }
         }
 
