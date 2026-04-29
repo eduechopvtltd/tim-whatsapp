@@ -463,8 +463,9 @@ async function runCampaignWorker(campaignId) {
 
     // Smart Deduplication check (re-run to avoid overlaps)
     const alreadySentSet = new Set();
-    campaign.results.forEach(r => {
-      const s = r.status.toLowerCase();
+    const existingResults = await CampaignResult.find({ campaignId }).select('phone status');
+    existingResults.forEach(r => {
+      const s = (r.status || '').toLowerCase();
       if (s.includes('✅') || s.includes('sent') || s.includes('delivered') || s.includes('read')) {
         alreadySentSet.add(r.phone);
       }
