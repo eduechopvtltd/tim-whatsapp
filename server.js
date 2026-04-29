@@ -16,7 +16,7 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
 const jwt = require('jsonwebtoken');
-const { User, Chat, Campaign, GlobalState, WamidMapping } = require('./db/models');
+const { User, Chat, Campaign, CampaignResult, CampaignContact, GlobalState, WamidMapping } = require('./db/models');
 const crypto = require('crypto');
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_for_dev_only';
 
@@ -479,22 +479,28 @@ async function runCampaignWorker(campaignId) {
     let cachedHeaderMediaId = mapping?.header_media_url || null;
 
     // THE WORK LOOP
-    for (let i = processed; i < contacts.length; i++) {
-      // Re-fetch level check for PAUSE/STOP status changes from other API calls
-      const currentJob = await Campaign.findById(campaignId);
-      if (!currentJob || currentJob.status === 'Stopped') break;
+    for (let i = processed; i < campaign.totalContacts; i++) {
+      // Re-fetch status check
+      const currentStatusCheck = await Campaign.findById(campaignId).select('status');
+      if (!currentStatusCheck || currentStatusCheck.status === 'Stopped') break;
 
-      if (currentJob.status === 'Paused') {
+      if (currentStatusCheck.status === 'Paused') {
         console.log(`[WORKER] Campaign ${jobId} is Paused. Waiting 5s...`);
-        jobs[userId][jobId].status = 'Paused';
+        if (jobs[userId][jobId]) jobs[userId][jobId].status = 'Paused';
         await sleep(5000);
-        i--; // Retry this index
-        continue;
+        i--; continue;
       }
 
-      jobs[userId][jobId].status = 'Running';
+      if (jobs[userId][jobId]) jobs[userId][jobId].status = 'Running';
 
-      const contact = contacts[i];
+      // Fetch contact from separate collection (Scalability)
+      const contactDoc = await CampaignContact.findOne({ campaignId, index: i });
+      if (!contactDoc) {
+          console.warn(`[WORKER] Missing contact at index ${i} for campaign ${campaignId}`);
+          continue;
+      }
+      const contact = contactDoc.data;
+      
       const phone = String(contact[mapping.phone] || '').trim();
       let cleanPhone = phone.replace(/\D/g, '');
       if (cleanPhone.length === 10) cleanPhone = '91' + cleanPhone;
@@ -504,27 +510,15 @@ async function runCampaignWorker(campaignId) {
       // --- DEDUPLICATION CHECK ---
       if (alreadySentSet.has(cleanPhone)) {
         msgStatus = 'Skipped ✅ (Duplicate in Campaign)';
-        console.log(`[WORKER] Skipping duplicate in current campaign: ${cleanPhone}`);
       } else if (!allowDuplicates) {
-        // Check history for either the same template OR the same custom message
-        const searchQuery = {
-            userId,
-            phone: cleanPhone,
-            $or: [
-                { "messages.text": `[Sent Template: ${templateName}]` },
-                { "messages.text": customMessage }
-            ]
-        };
-        const historyCheck = await Chat.findOne(searchQuery);
-        if (historyCheck) {
-            msgStatus = 'Skipped ✅ (History Duplicate)';
-            console.log(`[WORKER] Skipping duplicate from history: ${cleanPhone}`);
-        }
+        const historyCheck = await Chat.findOne({
+            userId, phone: cleanPhone,
+            $or: [{ "messages.text": `[Sent Template: ${templateName}]` }, { "messages.text": customMessage }]
+        });
+        if (historyCheck) msgStatus = 'Skipped ✅ (History Duplicate)';
       }
 
-      if (msgStatus.includes('Skipped')) {
-        // No action needed, proceed to persistence
-      } else {
+      if (!msgStatus.includes('Skipped')) {
         await sleep(250);
         try {
           if (messageType === 'text') {
@@ -548,20 +542,8 @@ async function runCampaignWorker(campaignId) {
             wamidToJob[wamid] = { jobId, phone: cleanPhone, userId };
             new WamidMapping({ wamid, userId, jobId, phone: cleanPhone }).save().catch(() => {});
             
-            // Sync to individual Chat history
-            const outboundMsg = {
-                id: wamid,
-                from: 'me',
-                name: cleanPhone,
-                text: messageType === 'template' ? `[Sent Template: ${templateName}]` : (customMessage || ''),
-                timestamp: Date.now(),
-                type: messageType
-            };
-            Chat.findOneAndUpdate(
-                { userId: userId, phone: cleanPhone },
-                { $push: { messages: outboundMsg }, $set: { updatedAt: Date.now(), lastMessageAt: Date.now() } },
-                { upsert: true }
-            ).catch(() => {});
+            const outboundMsg = { id: wamid, from: 'me', name: cleanPhone, text: messageType === 'template' ? `[Sent Template: ${templateName}]` : (customMessage || ''), timestamp: Date.now(), type: messageType };
+            Chat.findOneAndUpdate({ userId, phone: cleanPhone }, { $push: { messages: outboundMsg }, $set: { updatedAt: Date.now(), lastMessageAt: Date.now() } }, { upsert: true }).catch(() => {});
           }
         } catch (err) {
           error = err.response?.data?.error ? mapMetaError(err.response.data.error) : err.message;
@@ -569,34 +551,40 @@ async function runCampaignWorker(campaignId) {
         }
       }
 
-      // PERSIST PROGRESS
-      const updateData = {
-        $inc: { processed: 1 },
-        $push: {
-          results: {
-            phone: cleanPhone,
-            name: contact[mapping.name] || 'Customer',
-            status: msgStatus,
-            error: error,
-            wamid: wamid,
-            timestamp: new Date()
-          }
-        }
-      };
+      // PERSIST PROGRESS (Normalized)
+      const resultDoc = new CampaignResult({
+          campaignId, userId, jobId, phone: cleanPhone,
+          name: contact[mapping.name] || 'Customer',
+          status: msgStatus, error, wamid
+      });
+      await resultDoc.save();
+
+      const updateData = { $inc: { processed: 1 } };
       if (msgStatus.includes('✅')) updateData.$inc.sent = 1;
       else updateData.$inc.failed = 1;
 
-      const updatedCampaign = await Campaign.findByIdAndUpdate(campaignId, updateData, { returnDocument: 'after' });
-      jobs[userId][jobId] = updatedCampaign.toObject();
+      const updatedSummary = await Campaign.findByIdAndUpdate(campaignId, updateData, { returnDocument: 'after' }).select('-results -contacts');
+      
+      // Update Memory Cache (Lightweight but includes a sliding window of results for real-time UI)
+      if (!jobs[userId][jobId]) jobs[userId][jobId] = { ...updatedSummary.toObject(), results: [] };
+      else {
+          const statsOnly = updatedSummary.toObject();
+          jobs[userId][jobId] = { ...jobs[userId][jobId], ...statsOnly };
+      }
 
-      // Real-time Campaign Progress update
+      // Add latest result to sliding window (last 50 for UI performance)
+      const uiResult = { phone: cleanPhone, name: contact[mapping.name] || 'Customer', status: msgStatus, error, wamid, timestamp: new Date() };
+      jobs[userId][jobId].results = [uiResult, ...(jobs[userId][jobId].results || [])].slice(0, 50);
+
       io.to(userId.toString()).emit('campaign_progress', { jobId, status: jobs[userId][jobId] });
     }
 
-    const finalStatus = (await Campaign.findById(campaignId)).status;
-    if (finalStatus !== 'Stopped') {
-        const finishedCampaign = await Campaign.findByIdAndUpdate(campaignId, { status: 'Completed' }, { returnDocument: 'after' });
-        jobs[userId][jobId] = finishedCampaign.toObject();
+    const currentCampaign = await Campaign.findById(campaignId);
+    if (currentCampaign && currentCampaign.status !== 'Stopped') {
+        const finished = await Campaign.findByIdAndUpdate(campaignId, { status: 'Completed' }, { returnDocument: 'after' }).select('-results -contacts');
+        if (jobs[userId][jobId]) {
+            jobs[userId][jobId] = { ...jobs[userId][jobId], ...finished.toObject() };
+        }
         console.log(`[WORKER] Campaign ${jobId} Completed!`);
     }
     
@@ -1107,14 +1095,16 @@ app.post('/api/send', authenticateToken, async (req, res) => {
   // Unique Job ID: Combine userId and timestamp for absolute multi-tenant isolation
   const jobId = `${userId}_${Date.now()}`;
 
-  // Initialize Persistent Campaign record
+  // Initialize Persistent Campaign record (Compact)
   const campaign = new Campaign({
     userId,
     id: jobId,
     name: templateName || 'Custom Text Campaign',
     status: 'Running',
     totalContacts: contacts.length,
-    contacts,
+    // We store only a small subset of contacts in main doc for quick preview if needed
+    // The full list is stored in CampaignContact collection
+    contacts: contacts.slice(0, 100), 
     messageType,
     templateName,
     templateParams,
@@ -1129,6 +1119,20 @@ app.post('/api/send', authenticateToken, async (req, res) => {
   });
 
   await campaign.save();
+
+  // Store all contacts in the separate collection for large dataset support
+  const contactDocs = contacts.map((c, idx) => ({
+      campaignId: campaign._id,
+      data: c,
+      phone: String(c[mapping.phone] || '').replace(/\D/g, ''),
+      index: idx
+  }));
+  
+  // Insert in chunks of 500 to avoid BSON limit for the bulk insert itself
+  const chunkSize = 500;
+  for (let i = 0; i < contactDocs.length; i += chunkSize) {
+      await CampaignContact.insertMany(contactDocs.slice(i, i + chunkSize));
+  }
 
   // Trigger the resilient worker
   runCampaignWorker(campaign._id);
@@ -1147,13 +1151,27 @@ app.get('/api/history', authenticateToken, async (req, res) => {
   }
 });
 
-// Get detailed results for a specific campaign
+// Get detailed results for a specific campaign (Hybrid: Main Doc + New Collection)
 app.get('/api/history/:id', authenticateToken, async (req, res) => {
   try {
-    const campaign = await Campaign.findOne({ userId: req.user.id, id: req.params.id });
+    const campaign = await Campaign.findOne({ userId: req.user.id, id: req.params.id }).lean();
     if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+    
+    // Fetch results from the new collection
+    const results = await CampaignResult.find({ campaignId: campaign._id }).sort({ timestamp: -1 }).lean();
+    
+    // Merge results: Use new collection results if they exist, otherwise use legacy results array
+    campaign.results = results.length > 0 ? results : (campaign.results || []);
+    
+    // Also fetch contacts if main doc contacts is truncated
+    if (campaign.contacts && campaign.contacts.length < campaign.totalContacts) {
+        const fullContacts = await CampaignContact.find({ campaignId: campaign._id }).sort({ index: 1 }).lean();
+        campaign.contacts = fullContacts.map(c => c.data);
+    }
+    
     res.json(campaign);
   } catch (err) {
+    console.error('[API] History Details Error:', err.message);
     res.status(500).json({ error: 'Failed to fetch campaign details' });
   }
 });
@@ -1162,7 +1180,13 @@ app.get('/api/history/:id', authenticateToken, async (req, res) => {
 app.post('/api/history/clear', authenticateToken, async (req, res) => {
   console.log('[CLEAR] Request received to wipe history for user', req.user.id);
   try {
+    const campaigns = await Campaign.find({ userId: req.user.id });
+    const campaignIds = campaigns.map(c => c._id);
+
     await Campaign.deleteMany({ userId: req.user.id });
+    await CampaignResult.deleteMany({ campaignId: { $in: campaignIds } });
+    await CampaignContact.deleteMany({ campaignId: { $in: campaignIds } });
+
     // Also clear in-memory jobs for this user
     if (jobs[req.user.id]) delete jobs[req.user.id];
     res.json({ message: 'History cleared' });
@@ -1183,11 +1207,18 @@ app.get('/api/status/:jobId', authenticateToken, async (req, res) => {
 
   // 2. Fallback to DB
   try {
-    const campaign = await Campaign.findOne({ userId, id: parseInt(jobId) });
-    if (campaign) return res.json(campaign);
-    res.status(404).json({ error: 'Job not found' });
+    const jobIdVal = !isNaN(jobId) ? Number(jobId) : jobId;
+    const campaign = await Campaign.findOne({ userId, $or: [{ id: jobIdVal }, { id: String(jobIdVal) }] }).lean();
+    if (!campaign) return res.status(404).json({ error: 'Job not found' });
+    
+    // Fetch latest 50 results for the UI list
+    const results = await CampaignResult.find({ campaignId: campaign._id }).sort({ timestamp: -1 }).limit(50).lean();
+    campaign.results = results.length > 0 ? results : (campaign.results || []);
+    
+    res.json(campaign);
   } catch (err) {
-    res.status(500).json({ error: 'Database fetch failed' });
+    console.error('[API] Status Poll Error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch job status' });
   }
 });
 
@@ -1580,69 +1611,52 @@ app.post('/webhook', async (req, res) => {
             finalStatus = `Failed: ${statusInfo.errors[0].message}`;
           }
 
-          // 1. Update Memory
+          // 1. Update Memory (Optional: Light Sync)
           const userJobs = jobs[userId] || {};
-          if (userJobs[jobId]) {
-            const result = userJobs[jobId].results.find(r => r.phone === phone);
-            if (result && result.status !== finalStatus) {
-              if (statusString === 'delivered' && !result.status?.includes('Delivered')) userJobs[jobId].delivered = (userJobs[jobId].delivered || 0) + 1;
-              else if (statusString === 'read' && !result.status?.includes('Read')) userJobs[jobId].read = (userJobs[jobId].read || 0) + 1;
-              else if (statusString === 'failed' && !result.status?.includes('Failed')) userJobs[jobId].failed = (userJobs[jobId].failed || 0) + 1;
-              result.status = finalStatus;
-            }
+          if (userJobs[jobId] && userJobs[jobId].results) {
+              const result = userJobs[jobId].results.find(r => r.phone === phone);
+              if (result) result.status = finalStatus;
           }
 
-          // 2. Update DB - Smart Update (Flexible ID + WAMID fallback to Phone)
+          // 2. Update DB - Normalized High Performance Update
           const jobIdVal = !isNaN(jobId) ? Number(jobId) : jobId;
           const campaignIdQuery = { userId, $or: [{ id: jobIdVal }, { id: String(jobIdVal) }] };
-          const updateDoc = { $set: { "results.$.status": finalStatus } };
-          
-          if (statusString === 'delivered') {
-              updateDoc.$inc = { delivered: 1 };
-          } else if (statusString === 'read') {
-              updateDoc.$inc = { read: 1 };
-          } else if (statusString === 'failed') {
-              updateDoc.$inc = { failed: 1, sent: -1 };
-          }
           
           console.log(`[Webhook] Syncing ${phone} for Job ${jobIdVal} (${statusString})...`);
 
-          // Try to update by WAMID first (Precision)
-          let updated = await Campaign.findOneAndUpdate(
-            { ...campaignIdQuery, "results.wamid": wamid, "results.status": { $ne: finalStatus } },
-            updateDoc,
-            { returnDocument: 'after' }
+          // Try to update Result record first
+          let resUpdate = await CampaignResult.findOneAndUpdate(
+              { userId, jobId: jobIdVal.toString(), phone, status: { $ne: finalStatus } },
+              { $set: { status: finalStatus, wamid: wamid, timestamp: new Date() } },
+              { returnDocument: 'after' }
           );
 
-          if (updated) {
-              console.log(`[Webhook] ✅ WAMID Match: Updated counters for Job ${jobIdVal}`);
-          }
+          if (resUpdate) {
+              // Only if result was actually updated, increment the main campaign counters
+              const campaignInc = {};
+              if (statusString === 'delivered') campaignInc.delivered = 1;
+              else if (statusString === 'read') campaignInc.read = 1;
+              else if (statusString === 'failed') { campaignInc.failed = 1; campaignInc.sent = -1; }
 
-          // Fallback: If not found by WAMID, try by Phone (Legacy Support)
-          if (!updated) {
-            updated = await Campaign.findOneAndUpdate(
-              { 
-                ...campaignIdQuery, 
-                "results.phone": phone,
-                "results.status": { $ne: finalStatus }
-              },
-              { 
-                $set: { 
-                    "results.$.wamid": wamid, 
-                    "results.$.status": finalStatus 
-                },
-                ...(updateDoc.$inc ? { $inc: updateDoc.$inc } : {}) // Safely merge increments
-              },
-              { returnDocument: 'after' }
-            );
-            if (updated) console.log(`[Webhook] 🛠️ Phone Match (Legacy): Patched WAMID for ${phone} in Job ${jobIdVal}`);
-          }
+              const updatedSummary = await Campaign.findOneAndUpdate(
+                  campaignIdQuery,
+                  { $inc: campaignInc },
+                  { returnDocument: 'after' }
+              ).select('-results -contacts');
 
-          if (updated) {
-            io.to(userId.toString()).emit('status_update', { jobId: jobIdVal, phone, status: finalStatus });
-            io.to(userId.toString()).emit('campaign_stats', { jobId: jobIdVal, sent: updated.sent, delivered: updated.delivered, read: updated.read, failed: updated.failed });
+              if (updatedSummary) {
+                  io.to(userId.toString()).emit('status_update', { jobId: jobIdVal, phone, status: finalStatus });
+                  io.to(userId.toString()).emit('campaign_stats', { 
+                      jobId: jobIdVal, 
+                      sent: updatedSummary.sent, 
+                      delivered: updatedSummary.delivered, 
+                      read: updatedSummary.read, 
+                      failed: updatedSummary.failed 
+                  });
+                  console.log(`[Webhook] ✅ Updated counters for Job ${jobIdVal}`);
+              }
           } else {
-            console.log(`[Webhook] ℹ️ No update needed (already synced or not found) for ${phone}`);
+              console.log(`[Webhook] ℹ️ Already synced or record not found for ${phone}`);
           }
         }
 

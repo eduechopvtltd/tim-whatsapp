@@ -113,10 +113,39 @@ const WamidMappingSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now, expires: '48h' } // Auto-delete after 48 hours
 });
 
+// CampaignResult Schema: Individual message results for a campaign (High Performance)
+const CampaignResultSchema = new mongoose.Schema({
+    campaignId: { type: mongoose.Schema.Types.ObjectId, ref: 'Campaign', required: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    jobId: { type: String, required: true },
+    phone: { type: String, required: true },
+    name: { type: String },
+    status: { type: String, default: 'Pending' },
+    error: { type: String },
+    wamid: { type: String },
+    timestamp: { type: Date, default: Date.now }
+}, { timestamps: true });
+
+CampaignResultSchema.index({ campaignId: 1 });
+CampaignResultSchema.index({ userId: 1, jobId: 1, phone: 1 });
+CampaignResultSchema.index({ wamid: 1 });
+
+// CampaignContact Schema: Raw contact data for a campaign (Large Dataset Support)
+const CampaignContactSchema = new mongoose.Schema({
+    campaignId: { type: mongoose.Schema.Types.ObjectId, ref: 'Campaign', required: true },
+    data: { type: mongoose.Schema.Types.Mixed, required: true },
+    phone: { type: String, required: true },
+    index: { type: Number, required: true }
+});
+
+CampaignContactSchema.index({ campaignId: 1, index: 1 });
+
 module.exports = {
     User: mongoose.model('User', UserSchema),
     Chat: mongoose.model('Chat', ChatSchema),
     Campaign: mongoose.model('Campaign', CampaignSchema),
+    CampaignResult: mongoose.model('CampaignResult', CampaignResultSchema),
+    CampaignContact: mongoose.model('CampaignContact', CampaignContactSchema),
     GlobalState: mongoose.model('GlobalState', GlobalStateSchema),
     WamidMapping: mongoose.model('WamidMapping', WamidMappingSchema)
 };
