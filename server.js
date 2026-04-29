@@ -512,10 +512,18 @@ async function runCampaignWorker(campaignId) {
       if (alreadySentSet.has(cleanPhone)) {
         msgStatus = 'Skipped ✅ (Duplicate in Campaign)';
       } else if (!allowDuplicates) {
-        const historyCheck = await Chat.findOne({
-            userId, phone: cleanPhone,
-            $or: [{ "messages.text": `[Sent Template: ${templateName}]` }, { "messages.text": customMessage }]
-        });
+        // Targeted Deduplication: Only skip if the SAME template or SAME custom message was sent
+        const searchQuery = { userId, phone: cleanPhone };
+        if (messageType === 'template' && templateName) {
+            searchQuery["messages.text"] = `[Sent Template: ${templateName}]`;
+        } else if (messageType === 'text' && customMessage) {
+            searchQuery["messages.text"] = customMessage;
+        } else {
+            // Fallback: If no specific content to check, don't skip
+            searchQuery._id = null; 
+        }
+
+        const historyCheck = await Chat.findOne(searchQuery);
         if (historyCheck) msgStatus = 'Skipped ✅ (History Duplicate)';
       }
 
