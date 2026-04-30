@@ -95,40 +95,31 @@ const connectDB = async () => {
             if (idxErr.code !== 27) console.warn('[DB] Index cleanup note:', idxErr.message);
         }
 
-        // Migration: Recalculate and synchronize all campaign stats from their results arrays
-        console.log('[DB] 🔄 Synchronizing Campaign Stats with detailed results...');
+        // Migration: Recalculate and synchronize all campaign stats from the normalized collection
+        console.log('[DB] 🔄 Synchronizing Campaign Stats with normalized results...');
         const allCampaigns = await Campaign.find({});
         
         let migrationCount = 0;
         for (const camp of allCampaigns) {
-            let delivered = 0;
-            let read = 0;
-            let sent = 0;
-            let failed = 0;
+            // Aggregate from normalized collection for accuracy
+            const stats = await CampaignResult.aggregate([
+                { $match: { jobId: camp.id.toString() } },
+                { $group: {
+                    _id: null,
+                    sent: { $sum: { $cond: [{ $regexMatch: { input: "$status", regex: /sent|✅|delivered|read|📩/i } }, 1, 0] } },
+                    delivered: { $sum: { $cond: [{ $regexMatch: { input: "$status", regex: /delivered|read|📩/i } }, 1, 0] } },
+                    read: { $sum: { $cond: [{ $regexMatch: { input: "$status", regex: /read|📩/i } }, 1, 0] } },
+                    failed: { $sum: { $cond: [{ $regexMatch: { input: "$status", regex: /failed|❌/i } }, 1, 0] } }
+                }}
+            ]);
+
+            const s = stats[0] || { sent: 0, delivered: 0, read: 0, failed: 0 };
             
-            camp.results.forEach(r => {
-                const s = (r.status || '').toLowerCase();
-                if (s.includes('read')) {
-                    read++;
-                    delivered++;
-                    sent++;
-                } else if (s.includes('delivered')) {
-                    delivered++;
-                    sent++;
-                } else if (s.includes('sent') || s.includes('✅')) {
-                    sent++;
-                } else if (s.includes('failed') || s.includes('❌')) {
-                    failed++;
-                } else if (s.includes('pending')) {
-                    // Do nothing for pending
-                }
-            });
-            
-            // Only update if there's a discrepancy to save IO
-            if (camp.delivered !== delivered || camp.read !== read || camp.sent !== sent || camp.failed !== failed) {
+            // Only update if there's a discrepancy
+            if (camp.delivered !== s.delivered || camp.read !== s.read || camp.sent !== s.sent || camp.failed !== s.failed) {
                 await Campaign.updateOne(
                     { _id: camp._id },
-                    { $set: { delivered, read, sent, failed } }
+                    { $set: { delivered: s.delivered, read: s.read, sent: s.sent, failed: s.failed } }
                 );
                 migrationCount++;
             }
@@ -1645,7 +1636,13 @@ app.post('/webhook', async (req, res) => {
               const campaignInc = {};
               if (statusString === 'delivered') campaignInc.delivered = 1;
               else if (statusString === 'read') campaignInc.read = 1;
-              else if (statusString === 'failed') { campaignInc.failed = 1; campaignInc.sent = -1; }
+              else if (statusString === 'failed') { 
+                  campaignInc.failed = 1; 
+                  // Only decrement sent if it was previously Sent or Delivered
+                  if (resUpdate.status.includes('✅') || resUpdate.status.toLowerCase().includes('delivered')) {
+                      campaignInc.sent = -1;
+                  }
+              }
 
               const updatedSummary = await Campaign.findOneAndUpdate(
                   campaignIdQuery,
@@ -1670,7 +1667,15 @@ app.post('/webhook', async (req, res) => {
               const campaignInc = {};
               if (statusString === 'delivered') campaignInc.delivered = 1;
               else if (statusString === 'read') campaignInc.read = 1;
-              else if (statusString === 'failed') { campaignInc.failed = 1; campaignInc.sent = -1; }
+              else if (statusString === 'failed') { 
+                  campaignInc.failed = 1; 
+                  // Safer decrement: only if we have reason to believe it was previously success
+                  // We check current status in the DB before decrementing
+                  const currentStatus = await Campaign.findOne({ ...campaignIdQuery, "results.phone": phone }).select('results.$');
+                  if (currentStatus?.results?.[0]?.status.match(/sent|✅|delivered|read|📩/i)) {
+                      campaignInc.sent = -1;
+                  }
+              }
               
               if (Object.keys(campaignInc).length > 0) updateDoc.$inc = campaignInc;
 
