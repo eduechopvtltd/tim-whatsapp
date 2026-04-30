@@ -103,12 +103,12 @@ const connectDB = async () => {
         for (const camp of allCampaigns) {
             // Aggregate from normalized collection for accuracy
             const stats = await CampaignResult.aggregate([
-                { $match: { jobId: camp.id.toString() } },
+                { $match: { jobId: camp.id.toString(), userId: camp.userId } },
                 { $group: {
                     _id: null,
-                    sent: { $sum: { $cond: [{ $regexMatch: { input: "$status", regex: /sent|✅|delivered|read|📩/i } }, 1, 0] } },
-                    delivered: { $sum: { $cond: [{ $regexMatch: { input: "$status", regex: /delivered|read|📩/i } }, 1, 0] } },
-                    read: { $sum: { $cond: [{ $regexMatch: { input: "$status", regex: /read|📩/i } }, 1, 0] } },
+                    sent: { $sum: { $cond: [{ $regexMatch: { input: "$status", regex: /sent|✅|delivered|read|📩|👁/i } }, 1, 0] } },
+                    delivered: { $sum: { $cond: [{ $regexMatch: { input: "$status", regex: /delivered|read|📩|👁/i } }, 1, 0] } },
+                    read: { $sum: { $cond: [{ $regexMatch: { input: "$status", regex: /read|👁/i } }, 1, 0] } },
                     failed: { $sum: { $cond: [{ $regexMatch: { input: "$status", regex: /failed|❌/i } }, 1, 0] } }
                 }}
             ]);
@@ -1157,7 +1157,7 @@ app.get('/api/history/:id', authenticateToken, async (req, res) => {
     const campaign = await Campaign.findOne({ userId: req.user.id, id: req.params.id }).lean();
     if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
     
-    // Fetch results from the new collection
+    // Fetch results from the normalized collection
     const results = await CampaignResult.find({ campaignId: campaign._id }).sort({ timestamp: -1 }).lean();
     
     // Merge results: Use new collection results if they exist, otherwise use legacy results array
@@ -1168,6 +1168,27 @@ app.get('/api/history/:id', authenticateToken, async (req, res) => {
         const fullContacts = await CampaignContact.find({ campaignId: campaign._id }).sort({ index: 1 }).lean();
         campaign.contacts = fullContacts.map(c => c.data);
     }
+
+    // Self-healing: Recalculate counters from actual result data
+    let sent = 0, delivered = 0, read = 0, failed = 0;
+    campaign.results.forEach(r => {
+        const st = (r.status || '').toLowerCase();
+        if (st.includes('read') || st.includes('👁')) { sent++; delivered++; read++; }
+        else if (st.includes('delivered') || st.includes('📩')) { sent++; delivered++; }
+        else if (st.includes('sent') || st.includes('✅')) { sent++; }
+        else if (st.includes('failed') || st.includes('❌')) { failed++; }
+    });
+
+    // Fix any discrepancy in the database
+    if (campaign.sent !== sent || campaign.delivered !== delivered || campaign.read !== read || campaign.failed !== failed) {
+        await Campaign.updateOne({ _id: campaign._id }, { $set: { sent, delivered, read, failed } });
+        console.log(`[API] 🔧 Self-healed counters for campaign ${campaign.id}: S=${sent} D=${delivered} R=${read} F=${failed}`);
+    }
+
+    campaign.sent = sent;
+    campaign.delivered = delivered;
+    campaign.read = read;
+    campaign.failed = failed;
     
     res.json(campaign);
   } catch (err) {
@@ -1624,29 +1645,32 @@ app.post('/webhook', async (req, res) => {
           
           console.log(`[Webhook] Syncing ${phone} for Job ${jobIdVal} (${statusString})...`);
 
-          // Try to update Result record first
+          // Try to update Result record first (normalized collection)
           let resUpdate = await CampaignResult.findOneAndUpdate(
               { userId, jobId: jobIdVal.toString(), phone, status: { $ne: finalStatus } },
               { $set: { status: finalStatus, wamid: wamid, timestamp: new Date() } },
-              { returnDocument: 'after' }
+              { returnDocument: 'before' }
           );
 
           if (resUpdate) {
-              // Path A: New Normalized Campaign
-              const campaignInc = {};
-              if (statusString === 'delivered') campaignInc.delivered = 1;
-              else if (statusString === 'read') campaignInc.read = 1;
-              else if (statusString === 'failed') { 
-                  campaignInc.failed = 1; 
-                  // Only decrement sent if it was previously Sent or Delivered
-                  if (resUpdate.status.includes('✅') || resUpdate.status.toLowerCase().includes('delivered')) {
-                      campaignInc.sent = -1;
-                  }
-              }
+              // Path A: Normalized Campaign — Recalculate counters from actual data
+              // This is 100% accurate regardless of event ordering or server restarts
+              const statsAgg = await CampaignResult.aggregate([
+                  { $match: { jobId: jobIdVal.toString(), userId } },
+                  { $group: {
+                      _id: null,
+                      sent: { $sum: { $cond: [{ $regexMatch: { input: "$status", regex: /sent|✅|delivered|read|📩|👁/i } }, 1, 0] } },
+                      delivered: { $sum: { $cond: [{ $regexMatch: { input: "$status", regex: /delivered|read|📩|👁/i } }, 1, 0] } },
+                      read: { $sum: { $cond: [{ $regexMatch: { input: "$status", regex: /read|👁/i } }, 1, 0] } },
+                      failed: { $sum: { $cond: [{ $regexMatch: { input: "$status", regex: /failed|❌/i } }, 1, 0] } }
+                  }}
+              ]);
+
+              const counts = statsAgg[0] || { sent: 0, delivered: 0, read: 0, failed: 0 };
 
               const updatedSummary = await Campaign.findOneAndUpdate(
                   campaignIdQuery,
-                  { $inc: campaignInc },
+                  { $set: { sent: counts.sent, delivered: counts.delivered, read: counts.read, failed: counts.failed } },
                   { returnDocument: 'after' }
               ).select('-results -contacts');
 
@@ -1659,42 +1683,43 @@ app.post('/webhook', async (req, res) => {
                       read: updatedSummary.read, 
                       failed: updatedSummary.failed 
                   });
-                  console.log(`[Webhook] ✅ Updated counters (Normalized) for Job ${jobIdVal}`);
+                  console.log(`[Webhook] ✅ Recalculated counters for Job ${jobIdVal}: S=${counts.sent} D=${counts.delivered} R=${counts.read} F=${counts.failed}`);
               }
           } else {
-              // Path B: Legacy Campaign Fallback (Update embedded results array)
-              const updateDoc = { $set: { "results.$.status": finalStatus } };
-              const campaignInc = {};
-              if (statusString === 'delivered') campaignInc.delivered = 1;
-              else if (statusString === 'read') campaignInc.read = 1;
-              else if (statusString === 'failed') { 
-                  campaignInc.failed = 1; 
-                  // Safer decrement: only if we have reason to believe it was previously success
-                  // We check current status in the DB before decrementing
-                  const currentStatus = await Campaign.findOne({ ...campaignIdQuery, "results.phone": phone }).select('results.$');
-                  if (currentStatus?.results?.[0]?.status.match(/sent|✅|delivered|read|📩/i)) {
-                      campaignInc.sent = -1;
-                  }
-              }
-              
-              if (Object.keys(campaignInc).length > 0) updateDoc.$inc = campaignInc;
+              // Path B: Legacy Campaign Fallback (embedded results array)
+              // Also try to update in CampaignResult without the status guard (for wamid updates)
+              await CampaignResult.updateOne(
+                  { userId, jobId: jobIdVal.toString(), phone },
+                  { $set: { wamid: wamid } }
+              );
 
               const updatedLegacy = await Campaign.findOneAndUpdate(
                   { ...campaignIdQuery, "results.phone": phone, "results.status": { $ne: finalStatus } },
-                  updateDoc,
+                  { $set: { "results.$.status": finalStatus } },
                   { returnDocument: 'after' }
               );
 
               if (updatedLegacy) {
+                  // Recalculate legacy counters from the embedded results array
+                  let s = 0, d = 0, r = 0, f = 0;
+                  (updatedLegacy.results || []).forEach(res => {
+                      const st = (res.status || '').toLowerCase();
+                      if (st.includes('read') || st.includes('👁')) { s++; d++; r++; }
+                      else if (st.includes('delivered') || st.includes('📩')) { s++; d++; }
+                      else if (st.includes('sent') || st.includes('✅')) { s++; }
+                      else if (st.includes('failed') || st.includes('❌')) { f++; }
+                  });
+                  
+                  await Campaign.updateOne(
+                      { _id: updatedLegacy._id },
+                      { $set: { sent: s, delivered: d, read: r, failed: f } }
+                  );
+
                   io.to(userId.toString()).emit('status_update', { jobId: jobIdVal, phone, status: finalStatus });
                   io.to(userId.toString()).emit('campaign_stats', { 
-                      jobId: jobIdVal, 
-                      sent: updatedLegacy.sent, 
-                      delivered: updatedLegacy.delivered, 
-                      read: updatedLegacy.read, 
-                      failed: updatedLegacy.failed 
+                      jobId: jobIdVal, sent: s, delivered: d, read: r, failed: f 
                   });
-                  console.log(`[Webhook] 🛠️ Updated counters (Legacy Fallback) for Job ${jobIdVal}`);
+                  console.log(`[Webhook] 🛠️ Recalculated counters (Legacy) for Job ${jobIdVal}: S=${s} D=${d} R=${r} F=${f}`);
               } else {
                   console.log(`[Webhook] ℹ️ No update needed for ${phone} in Job ${jobIdVal}`);
               }
