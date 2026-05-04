@@ -110,7 +110,7 @@ const WamidMappingSchema = new mongoose.Schema({
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     jobId: { type: String, required: true },
     phone: { type: String, required: true },
-    createdAt: { type: Date, default: Date.now, expires: '48h' } // Auto-delete after 48 hours
+    createdAt: { type: Date, default: Date.now, expires: '7d' } // Auto-delete after 7 days
 });
 
 // CampaignResult Schema: Individual message results for a campaign (High Performance)

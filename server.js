@@ -99,6 +99,27 @@ const connectDB = async () => {
         console.log('[DB] 🔄 Synchronizing Campaign Stats with normalized results...');
         const allCampaigns = await Campaign.find({});
         
+        // STEP 1: Reconcile stale "Sent" records for completed campaigns
+        // If a campaign finished 2+ hours ago and records are still "Sent ✅",
+        // Meta never confirmed delivery — mark them as failed
+        const TWO_HOURS = 2 * 60 * 60 * 1000;
+        let reconcileCount = 0;
+        for (const camp of allCampaigns) {
+            const campaignAge = Date.now() - new Date(camp.timestamp || camp.createdAt).getTime();
+            if (camp.status === 'Completed' && campaignAge > TWO_HOURS) {
+                const staleUpdate = await CampaignResult.updateMany(
+                    { campaignId: camp._id, status: { $regex: /^Sent/i } },
+                    { $set: { status: 'Failed: Undelivered (no confirmation from Meta)' } }
+                );
+                if (staleUpdate.modifiedCount > 0) {
+                    reconcileCount += staleUpdate.modifiedCount;
+                    console.log(`[DB] 🔧 Reconciled ${staleUpdate.modifiedCount} stale records for campaign ${camp.id}`);
+                }
+            }
+        }
+        if (reconcileCount > 0) console.log(`[DB] 🔧 Total reconciled: ${reconcileCount} stale "Sent" records → Failed`);
+        
+        // STEP 2: Recalculate counters from normalized results
         let migrationCount = 0;
         for (const camp of allCampaigns) {
             // Aggregate from normalized collection for accuracy
@@ -540,7 +561,7 @@ async function runCampaignWorker(campaignId) {
 
           if (wamid) {
             wamidToJob[wamid] = { jobId, phone: cleanPhone, userId };
-            new WamidMapping({ wamid, userId, jobId, phone: cleanPhone }).save().catch(() => {});
+            new WamidMapping({ wamid, userId, jobId, phone: cleanPhone }).save().catch(err => console.warn(`[WORKER] WamidMapping save warn for ${cleanPhone}:`, err.message));
             
             const outboundMsg = { id: wamid, from: 'me', name: cleanPhone, text: messageType === 'template' ? `[Sent Template: ${templateName}]` : (customMessage || ''), timestamp: Date.now(), type: messageType };
             Chat.findOneAndUpdate({ userId, phone: cleanPhone }, { $push: { messages: outboundMsg }, $set: { updatedAt: Date.now(), lastMessageAt: Date.now() } }, { upsert: true }).catch(() => {});
@@ -1169,6 +1190,32 @@ app.get('/api/history/:id', authenticateToken, async (req, res) => {
         campaign.contacts = fullContacts.map(c => c.data);
     }
 
+    // RECONCILIATION: For completed campaigns older than 2 hours,
+    // any record still "Sent ✅" (never confirmed delivered/read) is treated as failed.
+    // Meta's delivery confirmation arrives within seconds; if 2+ hours have passed
+    // with no update, the message was silently rejected by Meta.
+    const campaignAge = Date.now() - new Date(campaign.timestamp || campaign.createdAt).getTime();
+    const TWO_HOURS = 2 * 60 * 60 * 1000;
+    const isOldCompleted = campaign.status === 'Completed' && campaignAge > TWO_HOURS;
+
+    if (isOldCompleted) {
+        // Bulk-update stale "Sent" records in the database
+        const staleUpdate = await CampaignResult.updateMany(
+            { 
+                campaignId: campaign._id,
+                status: { $regex: /^Sent/i }
+            },
+            { $set: { status: 'Failed: Undelivered (no confirmation from Meta)' } }
+        );
+        
+        if (staleUpdate.modifiedCount > 0) {
+            console.log(`[API] 🔧 Reconciled ${staleUpdate.modifiedCount} stale "Sent" records → Failed for campaign ${campaign.id}`);
+            // Re-fetch results after reconciliation
+            const freshResults = await CampaignResult.find({ campaignId: campaign._id }).sort({ timestamp: -1 }).lean();
+            campaign.results = freshResults;
+        }
+    }
+
     // Self-healing: Recalculate counters from actual result data
     let sent = 0, delivered = 0, read = 0, failed = 0;
     campaign.results.forEach(r => {
@@ -1589,38 +1636,63 @@ app.post('/webhook', async (req, res) => {
 
         let mapping = wamidToJob[wamid];
         if (!mapping) {
-          // 1. Try WamidMapping collection (Fast)
+          // 1. Try WamidMapping collection (Fast, persistent)
           const dbMapping = await WamidMapping.findOne({ wamid });
           if (dbMapping) {
             mapping = { jobId: dbMapping.jobId, phone: dbMapping.phone, userId: dbMapping.userId };
             wamidToJob[wamid] = mapping;
-          } else {
-            // 2. Deep Search: Scan recent campaigns for this user
-            console.log(`[Webhook] Deep search for WAMID: ${wamid}...`);
-            let campaign = await Campaign.findOne({ userId, "results.wamid": wamid });
-            
-            // Legacy Fallback: If no WAMID match, find a recent campaign with this phone
-            if (!campaign) {
-                const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
-                campaign = await Campaign.findOne({ 
-                    userId, 
-                    createdAt: { $gte: yesterday },
-                    "results.phone": recipient 
-                }).sort({ createdAt: -1 }); // Get the most recent one if multiple exist
-                
-                if (campaign) console.log(`[Webhook] 🔍 Found Legacy Campaign via Phone: ${campaign.id}`);
-            }
-
-            if (campaign) {
-                const found = campaign.results.find(r => r.wamid === wamid || r.phone === recipient);
-                if (found) {
-                    mapping = { jobId: campaign.id, phone: found.phone, userId };
-                    wamidToJob[wamid] = mapping; // Cache it
-                    // Create mapping for next time
-                    new WamidMapping({ wamid, userId, jobId: campaign.id, phone: found.phone }).save().catch(() => {});
-                }
-            }
           }
+        }
+
+        if (!mapping) {
+          // 2. Search CampaignResult collection (THE KEY FALLBACK for normalized campaigns)
+          const resultDoc = await CampaignResult.findOne({ wamid, userId });
+          if (resultDoc) {
+            mapping = { jobId: resultDoc.jobId, phone: resultDoc.phone, userId };
+            wamidToJob[wamid] = mapping;
+            // Persist mapping for next time
+            WamidMapping.findOneAndUpdate(
+                { wamid },
+                { wamid, userId, jobId: resultDoc.jobId, phone: resultDoc.phone, createdAt: new Date() },
+                { upsert: true }
+            ).catch(err => console.warn('[Webhook] WamidMapping save warn:', err.message));
+            console.log(`[Webhook] 🔍 Found mapping via CampaignResult: Job ${resultDoc.jobId}`);
+          }
+        }
+
+        if (!mapping) {
+          // 3. Legacy Deep Search: Scan Campaign embedded results (for old campaigns)
+          console.log(`[Webhook] Deep search (legacy) for WAMID: ${wamid}...`);
+          let campaign = await Campaign.findOne({ userId, "results.wamid": wamid });
+          
+          // 4. Last resort: Find recent campaign by phone number
+          if (!campaign) {
+              const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+              campaign = await Campaign.findOne({ 
+                  userId, 
+                  createdAt: { $gte: threeDaysAgo },
+                  "results.phone": recipient 
+              }).sort({ createdAt: -1 });
+              
+              if (campaign) console.log(`[Webhook] 🔍 Found Legacy Campaign via Phone: ${campaign.id}`);
+          }
+
+          if (campaign) {
+              const found = campaign.results.find(r => r.wamid === wamid || r.phone === recipient);
+              if (found) {
+                  mapping = { jobId: campaign.id, phone: found.phone, userId };
+                  wamidToJob[wamid] = mapping;
+                  WamidMapping.findOneAndUpdate(
+                      { wamid },
+                      { wamid, userId, jobId: campaign.id, phone: found.phone, createdAt: new Date() },
+                      { upsert: true }
+                  ).catch(err => console.warn('[Webhook] WamidMapping save warn:', err.message));
+              }
+          }
+        }
+
+        if (!mapping) {
+            console.warn(`[Webhook] ⚠️ Could NOT find mapping for WAMID ${wamid} (${recipient} → ${statusString})`);
         }
 
         if (mapping) {
